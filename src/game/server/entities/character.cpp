@@ -805,10 +805,13 @@ void CCharacter::FireWeapon()
 								}
 								else
 								{
-									pTarget->IncreaseHealth(2);
-									pTarget->IncreaseArmor(2);
-									pTarget->m_EmoteType = EMOTE_HAPPY;
-									pTarget->m_EmoteStop = Server()->Tick() + Server()->TickSpeed();
+									if(pTarget->IncreaseOverallHp(4))
+									{
+										IncreaseOverallHp(1);
+
+										pTarget->m_EmoteType = EMOTE_HAPPY;
+										pTarget->m_EmoteStop = Server()->Tick() + Server()->TickSpeed();
+									}
 									
 									if(!pTarget->GetPlayer()->HookProtectionEnabled())
 										pTarget->m_Core.m_Vel += vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f;
@@ -2391,8 +2394,7 @@ bool CCharacter::TakeDamage(vec2 Force, int Dmg, int From, int Weapon, int Mode)
 				//Heal and unfreeze
 				if(pKillerPlayer->GetClass() == PLAYERCLASS_BOOMER && Weapon == WEAPON_HAMMER)
 				{
-					IncreaseHealth(4+random_int(0, 5));
-					IncreaseArmor(4+random_int(0, 5));
+					IncreaseOverallHp(8+random_int(0, 10));
 					if(IsFrozen())
 						Unfreeze();
 						
