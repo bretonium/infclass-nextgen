@@ -317,6 +317,7 @@ function build(settings)
 	game_client = Compile(settings, CollectRecursive("src/game/client/*.cpp"), client_content_source)
 	game_server = Compile(settings, CollectRecursive("src/game/server/*.cpp"), server_content_source)
 	game_editor = Compile(settings, Collect("src/game/editor/*.cpp"))
+	infclassr = Compile(settings, Collect("src/infclassr/*.cpp"))
 
 
 	-- build tools (TODO: fix this so we don't get double _d_d stuff)
@@ -341,7 +342,7 @@ function build(settings)
 		client_link_other, client_osxlaunch)
 
 	server_exe = Link(server_settings, "bin/server", engine, server,
-		game_shared, game_server, teeuniverses, zlib, server_link_other, md5, json)
+		game_shared, game_server, infclassr, teeuniverses, zlib, server_link_other, md5, json)
 
 	serverlaunch = {}
 	if platform == "macosx" then
