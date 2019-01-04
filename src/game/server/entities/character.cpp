@@ -3556,7 +3556,7 @@ void CCharacter::SlowMotionEffect()
 {
 	if(m_SlowMotionTick <= 0)
 	{
-		m_SlowMotionTick = Server()->TickSpeed()*6;
+		m_SlowMotionTick = Server()->TickSpeed()*g_Config.m_InfSlowMotionDuration;
 		m_IsInSlowMotion = true;
 		m_Core.m_Vel *= 0.3;
 	}
@@ -3615,6 +3615,8 @@ int CCharacter::GetInfWeaponID(int WID)
 				return INFWEAPON_SCIENTIST_GRENADE;
 			case PLAYERCLASS_HERO:
 				return INFWEAPON_HERO_GRENADE;
+			case PLAYERCLASS_LOOPER:
+				return INFWEAPON_LOOPER_RIFLE;
 			default:
 				return INFWEAPON_GRENADE;
 		}
