@@ -1457,7 +1457,7 @@ void CCharacter::Tick()
   // Delayed Death
   if(GetClass() == PLAYERCLASS_VOODOO && m_VoodooAboutToDie && m_VoodooTimeAlive > 0)
   {
-    m_VoodooTimeAlive -= Server()->TickSpeed();
+    m_VoodooTimeAlive--;
     dbg_msg("DEBUG", "Dying Process %d", m_VoodooTimeAlive);
   }
   else if(GetClass() == PLAYERCLASS_VOODOO && m_VoodooAboutToDie && m_VoodooTimeAlive <= 0)
