@@ -201,7 +201,6 @@ function build(settings)
 			settings.link.frameworks:Add("AppKit")
 		else
 			settings.link.libs:Add("pthread")
-			settings.link.libs:Add("geolite2++") -- for ip geolocation
 			settings.link.libs:Add("maxminddb")  -- for ip geolocation
 			-- add ICU for linux
 			if ExecuteSilent("pkg-config icu-uc icu-i18n") == 0 then
@@ -317,7 +316,7 @@ function build(settings)
 	game_client = Compile(settings, CollectRecursive("src/game/client/*.cpp"), client_content_source)
 	game_server = Compile(settings, CollectRecursive("src/game/server/*.cpp"), server_content_source)
 	game_editor = Compile(settings, Collect("src/game/editor/*.cpp"))
-	infclassr = Compile(settings, Collect("src/infclassr/*.cpp"))
+	infclassr = Compile(settings, Collect("src/infclassr/*.cpp", "src/infclassr/GeoLite2PP/*.cpp"))
 
 
 	-- build tools (TODO: fix this so we don't get double _d_d stuff)
