@@ -205,9 +205,9 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_PositionLockAvailable = false;
 	m_Poison = 0;
 	m_VoodooAboutToDie = false;
-  	m_VoodooTimeAlive = Server()->TickSpeed()*g_Config.m_InfVoodooAliveTime;
-  	m_pPlayer->SetToSpirit(false);
-
+	m_VoodooTimeAlive = Server()->TickSpeed()*g_Config.m_InfVoodooAliveTime;
+	m_pPlayer->SetToSpirit(false);
+  
 	ClassSpawnAttributes();
 	DestroyChildEntities();
 	GiveArmorIfLonely();
