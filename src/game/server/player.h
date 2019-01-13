@@ -133,7 +133,8 @@ private:
 	int m_GhoulLevel;
 	int m_GhoulLevelTick;
 	int m_NumberKills;
-	
+	bool m_VoodooIsSpirit;
+
 public:
 	int m_Authed;
 	int m_ScoreRound;
@@ -183,6 +184,8 @@ public:
 	inline int GetGhoulLevel() const { return m_GhoulLevel; }
 	
 	int m_LastHumanClasses[2];
+
+	void SetToSpirit(bool IsSpirit);
 /* INFECTION MODIFICATION END *****************************************/
 };
 
