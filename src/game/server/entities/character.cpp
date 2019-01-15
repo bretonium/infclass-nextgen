@@ -905,7 +905,7 @@ void CCharacter::FireWeapon()
 								pTarget->TakeDamage(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f, g_Config.m_InfBatDamage,
 									m_pPlayer->GetCID(), m_ActiveWeapon, TAKEDAMAGEMODE_NOINFECTION);
 							}
-							else
+							else if(GameServer()->m_pController->IsInfectionStarted())
 							{
 								bool healSuccess = false;
 								healSuccess = pTarget->IncreaseHealth(2);
