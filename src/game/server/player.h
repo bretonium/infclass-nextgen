@@ -155,6 +155,8 @@ public:
 	int GetOldClass();
 	void SetOldClass(int oldClass);
 	bool IsInfected() const;
+	bool IsZombie() const;
+	bool IsHuman() const;
 	void StartInfection(bool force = false);
 	bool IsKownClass(int c);
 	
