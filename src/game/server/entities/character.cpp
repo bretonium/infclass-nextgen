@@ -2410,18 +2410,11 @@ void CCharacter::Tick()
 	}
 	else if(GetClass() == PLAYERCLASS_HERO)
 	{
+		if (!m_pHeroFlag)
+			m_pHeroFlag = new CHeroFlag(&GameServer()->m_World, m_pPlayer->GetCID());
+
 		//Search for flag
-		int CoolDown = 999999999;
-		for(CHeroFlag *pFlag = (CHeroFlag*) GameWorld()->FindFirst(CGameWorld::ENTTYPE_HERO_FLAG); pFlag; pFlag = (CHeroFlag*) pFlag->TypeNext())
-		{
-			if(pFlag->GetCoolDown() <= 0)
-			{
-				CoolDown = 0;
-				break;
-			}
-			else if(pFlag->GetCoolDown() < CoolDown)
-				CoolDown = pFlag->GetCoolDown();
-		}
+		int CoolDown = m_pHeroFlag->GetCoolDown();
 		
 		if(CoolDown > 0)
 		{
@@ -3124,9 +3117,9 @@ void CCharacter::Snap(int SnappingClient)
 				pObj->m_Type = WEAPON_HAMMER;
 			}
 		}
-		else if(GetClass() == PLAYERCLASS_HERO) 
+		else if(GetClass() == PLAYERCLASS_HERO && g_Config.m_InfHeroFlagIndicator) 
 		{
-			CHeroFlag *pFlag = (CHeroFlag*) GameWorld()->FindFirst(CGameWorld::ENTTYPE_HERO_FLAG);
+			CHeroFlag *pFlag = m_pHeroFlag;
 			
 			// Guide hero to flag
 			if(pFlag->GetCoolDown() <= 0)
@@ -3731,6 +3724,11 @@ void CCharacter::DestroyChildEntities()
 	{
 		if(pIndicator->GetOwner() != m_pPlayer->GetCID()) continue;
 			GameServer()->m_World.DestroyEntity(pIndicator);
+	}
+	for(CHeroFlag* pFlag = (CHeroFlag*) GameWorld()->FindFirst(CGameWorld::ENTTYPE_HERO_FLAG); pFlag; pFlag = (CHeroFlag*) pFlag->TypeNext())
+	{
+		if(pFlag->GetOwner() != m_pPlayer->GetCID()) continue;
+		GameServer()->m_World.DestroyEntity(pFlag);
 	}
 			
 	m_FirstShot = true;
