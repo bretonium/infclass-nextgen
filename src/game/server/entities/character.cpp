@@ -3161,7 +3161,7 @@ void CCharacter::Snap(int SnappingClient)
 				pObj->m_Type = WEAPON_HAMMER;
 			}
 		}
-		else if(GetClass() == PLAYERCLASS_HERO && g_Config.m_InfHeroFlagIndicator) 
+		else if(GetClass() == PLAYERCLASS_HERO && g_Config.m_InfHeroFlagIndicator && m_pHeroFlag) 
 		{
 			CHeroFlag *pFlag = m_pHeroFlag;
 			
