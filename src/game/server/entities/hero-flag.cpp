@@ -94,40 +94,11 @@ void CHeroFlag::GiveGift(CCharacter* pHero)
 
 	for(CCharacter *p = (CCharacter*) GameWorld()->FindFirst(CGameWorld::ENTTYPE_CHARACTER); p; p = (CCharacter *)p->TypeNext())
 	{
-		if(p->IsInfected() || p == pHero)
+		if(p->IsZombie() || p == pHero)
 			continue;
 
 		p->SetEmote(EMOTE_HAPPY, Server()->Tick() + Server()->TickSpeed());
 		GameServer()->SendEmoticon(p->GetPlayer()->GetCID(), EMOTICON_MUSIC);
-		
-		if(p == pHero)
-		{
-			p->IncreaseHealth(10);
-			p->IncreaseArmor(10);
-			
-			
-			if (g_Config.m_InfTurretEnable) 
-			{
-				if (Server()->GetActivePlayerCount() > 2)
-				{
-					if (p->m_TurretCount == 0)
-						p->GiveWeapon(WEAPON_HAMMER, -1);
-					
-					p->m_TurretCount++;
-					
-					char aBuf[256];
-					str_format(aBuf, sizeof(aBuf), "you gained a turret (%i), place it with the hammer", p->m_TurretCount);
-					GameServer()->SendChatTarget_Localization(p->GetPlayer()->GetCID(), CHATCATEGORY_SCORE, aBuf, NULL);
-					
-					if (g_Config.m_InfTurretGive) 
-					{
-						p->m_TurretCount = p->m_TurretCount + g_Config.m_InfTurretGive;
-					}
-				}
-			}
-			
-		}
-		
 		p->GiveGift(GIFT_HEROFLAG);
 	}
 }

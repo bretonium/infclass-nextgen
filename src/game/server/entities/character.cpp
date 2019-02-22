@@ -211,6 +211,7 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_PositionLocked = false;
 	m_PositionLockAvailable = false;
 	m_Poison = 0;
+  
 	m_VoodooAboutToDie = false;
 	m_VoodooTimeAlive = Server()->TickSpeed()*g_Config.m_InfVoodooAliveTime;
 	m_pPlayer->SetToSpirit(false);
@@ -601,9 +602,13 @@ void CCharacter::FireWeapon()
 
 	bool AutoFire = false;
 	bool FullAuto = false;
-	if(m_ActiveWeapon == WEAPON_GUN || m_ActiveWeapon == WEAPON_GRENADE || m_ActiveWeapon == WEAPON_SHOTGUN || m_ActiveWeapon == WEAPON_RIFLE || GetInfWeaponID(m_ActiveWeapon) == INFWEAPON_MERCENARY_GUN)
+	
+	if(m_ActiveWeapon == WEAPON_GUN || m_ActiveWeapon == WEAPON_GRENADE || m_ActiveWeapon == WEAPON_SHOTGUN || m_ActiveWeapon == WEAPON_RIFLE)
 		FullAuto = true;
 
+	if(GetClass() == PLAYERCLASS_SLUG && m_ActiveWeapon == WEAPON_HAMMER)
+		FullAuto = true;
+	
 	// check if we gonna fire
 	bool WillFire = false;
 	if(CountInput(m_LatestPrevInput.m_Fire, m_LatestInput.m_Fire).m_Presses)
@@ -965,17 +970,8 @@ void CCharacter::FireWeapon()
 							}
 							else if(GameServer()->m_pController->IsInfectionStarted())
 							{
-								bool healSuccess = false;
-								healSuccess = pTarget->IncreaseHealth(2);
-								healSuccess = pTarget->IncreaseArmor(2);
-								if (healSuccess)
-									IncreaseOverallHp(1);
-								
-								pTarget->m_EmoteType = EMOTE_HAPPY;
-								pTarget->m_EmoteStop = Server()->Tick() + Server()->TickSpeed();
-								
-								if(!pTarget->GetPlayer()->HookProtectionEnabled())
-									pTarget->m_Core.m_Vel += vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f;
+								pTarget->TakeDamage(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f, g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage,
+									m_pPlayer->GetCID(), m_ActiveWeapon, TAKEDAMAGEMODE_INFECTION);
 							}
 						}
 						else if(GetClass() == PLAYERCLASS_BIOLOGIST || GetClass() == PLAYERCLASS_MERCENARY)
@@ -1375,7 +1371,6 @@ void CCharacter::FireWeapon()
 				}
 				else if(GetClass() == PLAYERCLASS_SCIENTIST)
 				{
-
 					//white hole activation in scientist-laser
 					
 					new CScientistLaser(GameWorld(), m_Pos, Direction, GameServer()->Tuning()->m_LaserReach*0.6f, m_pPlayer->GetCID(), Damage);
@@ -2720,6 +2715,7 @@ void CCharacter::Die(int Killer, int Weapon)
 		return;
 	}
   
+	
 
 	//Find the nearest ghoul
 	{
