@@ -81,7 +81,6 @@ enum
 	NET_CONN_BUFFERSIZE=1024*32,
 
 	NET_CONNLIMIT_IPS=16,
-	NET_CONNLIMIT_DDOS=256,
 
 	NET_ENUM_TERMINATOR
 };
@@ -319,7 +318,6 @@ class CNetServer
 	unsigned char m_SecurityTokenSeed[16];
 
 	CSpamConn m_aSpamConns[NET_CONNLIMIT_IPS];
-	int64 m_aDistSpamConns[NET_CONNLIMIT_DDOS];
 	
 	CNetRecvUnpacker m_RecvUnpacker;
 
@@ -354,7 +352,6 @@ public:
 	int GetClientSlot(const NETADDR &Addr);
 	SECURITY_TOKEN GetToken(const NETADDR &Addr);
 	bool Connlimit(NETADDR Addr);
-	bool DistConnlimit();
 	int NumClientsWithAddr(NETADDR Addr);
 
 	// status requests
