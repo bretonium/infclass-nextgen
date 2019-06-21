@@ -375,10 +375,6 @@ CServer::CServer() : m_DemoRecorder(&m_SnapshotDelta)
 	m_RconClientID = IServer::RCON_CID_SERV;
 	m_RconAuthLevel = AUTHED_ADMIN;
 
-	m_ServerInfoFirstRequest = 0;
-	m_ServerInfoNumRequests = 0;
-	m_ServerInfoHighLoad = false;
-
 #ifdef CONF_SQL
 /* DDNET MODIFICATION START *******************************************/
 	for (int i = 0; i < MAX_SQLSERVERS; i++)
@@ -1515,25 +1511,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 	}
 }
 
-void CServer::SendServerInfoConnless(const NETADDR *pAddr, int Token, bool Extended)
-{
-	const int MaxRequests = g_Config.m_SvServerInfoPerSecond;
-	int64 Now = Tick();
-	if(Now <= m_ServerInfoFirstRequest + TickSpeed())
-	{
-		m_ServerInfoNumRequests++;
-	}
-	else
-	{
-		m_ServerInfoHighLoad = m_ServerInfoNumRequests > MaxRequests;
-		m_ServerInfoNumRequests = 1;
-		m_ServerInfoFirstRequest = Now;
-	}
-	bool SendClients = m_ServerInfoNumRequests <= MaxRequests && !m_ServerInfoHighLoad;
-	SendServerInfo(pAddr, Token, Extended, SendClients);
-}
-
-void CServer::SendServerInfo(const NETADDR *pAddr, int Token, bool Extended, bool SendClients, int Offset)
+void CServer::SendServerInfo(const NETADDR *pAddr, int Token, bool Extended, int Offset)
 {
 	CNetChunk Packet;
 	CPacker p;
@@ -1667,23 +1645,21 @@ void CServer::SendServerInfo(const NETADDR *pAddr, int Token, bool Extended, boo
 	int Skip = Offset;
 	int Take = ClientsPerPacket;
 
-	if (SendClients) {
-		for(i = 0; i < MAX_CLIENTS; i++)
+	for(i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(m_aClients[i].m_State != CClient::STATE_EMPTY)
 		{
-			if(m_aClients[i].m_State != CClient::STATE_EMPTY)
-			{
-				if (Skip-- > 0)
-					continue;
-				if (--Take < 0)
-					break;
+			if (Skip-- > 0)
+				continue;
+			if (--Take < 0)
+				break;
 
-				p.AddString(ClientName(i), MAX_NAME_LENGTH); // client name
-				p.AddString(ClientClan(i), MAX_CLAN_LENGTH); // client clan
+			p.AddString(ClientName(i), MAX_NAME_LENGTH); // client name
+			p.AddString(ClientClan(i), MAX_CLAN_LENGTH); // client clan
 
-				str_format(aBuf, sizeof(aBuf), "%d", m_aClients[i].m_Country); p.AddString(aBuf, 6); // client country
-				str_format(aBuf, sizeof(aBuf), "%d", RoundStatistics()->PlayerScore(i)); p.AddString(aBuf, 6); // client score
-				str_format(aBuf, sizeof(aBuf), "%d", GameServer()->IsClientPlayer(i)?1:0); p.AddString(aBuf, 2); // is player?
-			}
+			str_format(aBuf, sizeof(aBuf), "%d", m_aClients[i].m_Country); p.AddString(aBuf, 6); // client country
+			str_format(aBuf, sizeof(aBuf), "%d", RoundStatistics()->PlayerScore(i)); p.AddString(aBuf, 6); // client score
+			str_format(aBuf, sizeof(aBuf), "%d", GameServer()->IsClientPlayer(i)?1:0); p.AddString(aBuf, 2); // is player?
 		}
 	}
 
@@ -1725,12 +1701,12 @@ void CServer::PumpNetwork()
 				if(Packet.m_DataSize == sizeof(SERVERBROWSE_GETINFO)+1 &&
 					mem_comp(Packet.m_pData, SERVERBROWSE_GETINFO, sizeof(SERVERBROWSE_GETINFO)) == 0)
 				{
-					SendServerInfoConnless(&Packet.m_Address, ((unsigned char *)Packet.m_pData)[sizeof(SERVERBROWSE_GETINFO)]);
+					SendServerInfo(&Packet.m_Address, ((unsigned char *)Packet.m_pData)[sizeof(SERVERBROWSE_GETINFO)]);
 				}
 				else if(Packet.m_DataSize == sizeof(SERVERBROWSE_GETINFO64)+1 &&
 					mem_comp(Packet.m_pData, SERVERBROWSE_GETINFO64, sizeof(SERVERBROWSE_GETINFO64)) == 0)
 				{
-					SendServerInfoConnless(&Packet.m_Address, ((unsigned char *)Packet.m_pData)[sizeof(SERVERBROWSE_GETINFO64)], true);
+					SendServerInfo(&Packet.m_Address, ((unsigned char *)Packet.m_pData)[sizeof(SERVERBROWSE_GETINFO64)], true);
 				}
 			}
 		}
