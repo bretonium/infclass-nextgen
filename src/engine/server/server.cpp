@@ -1519,7 +1519,7 @@ void CServer::SendServerInfoConnless(const NETADDR *pAddr, int Token, bool Exten
 {
 	const int MaxRequests = g_Config.m_SvServerInfoPerSecond;
 	int64 Now = Tick();
-	if(abs(Now - m_ServerInfoFirstRequest) <= TickSpeed())
+	if(Now <= m_ServerInfoFirstRequest + TickSpeed())
 	{
 		m_ServerInfoNumRequests++;
 	}
