@@ -228,7 +228,6 @@ public:
 	int m_NinjaAmmoBuff;
 	int m_RefreshTime;
 	bool m_VoodooAboutToDie;
-	
 
 public:
 	void DestroyChildEntities();
