@@ -1297,19 +1297,6 @@ void CCharacter::FireWeapon()
 					GameServer()->CreateSound(m_Pos, SOUND_GRENADE_FIRE);
 					
 				}
-	/* INFECTION MODIFICATION END *****************************************/
-
-				// pack the Projectile and send it to the client Directly
-				CNetObj_Projectile p;
-				pProj->FillInfo(&p);
-
-				CMsgPacker Msg(NETMSGTYPE_SV_EXTRAPROJECTILE);
-				Msg.AddInt(1);
-				for(unsigned i = 0; i < sizeof(CNetObj_Projectile)/sizeof(int); i++)
-					Msg.AddInt(((int *)&p)[i]);
-				Server()->SendMsg(&Msg, 0, m_pPlayer->GetCID());
-
-				GameServer()->CreateSound(m_Pos, SOUND_GRENADE_FIRE);
 			}
 		} break;
 

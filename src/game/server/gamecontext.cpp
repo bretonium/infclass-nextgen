@@ -2927,8 +2927,12 @@ bool CGameContext::ConChatInfo(IConsole::IResult *pResult, void *pUserData)
 	Buffer.append("\n\n");
 	pSelf->Server()->Localization()->Format_L(Buffer, pLanguage, _("Thanks to {str:ListOfContributors}"), "ListOfContributors", aThanks, NULL); 
 	Buffer.append("\n\n");
+	/**
+	 * temporarily comment out due to work on porting to 0.7 because
+	 * LAST_COMPILE_DATE is got lost
 	pSelf->Server()->Localization()->Format_L(Buffer, pLanguage, _("Server version from {str:ServerCompileDate} "), "ServerCompileDate", LAST_COMPILE_DATE, NULL); 
-	Buffer.append("\n\n");	
+	Buffer.append("\n\n");
+	*/
 	pSelf->SendMOTD(ClientID, Buffer.buffer());
 	
 	return true;
