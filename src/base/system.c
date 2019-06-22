@@ -374,20 +374,6 @@ int io_flush(IOHANDLE io)
 	return 0;
 }
 
-void *thread_create(void (*threadfunc)(void *), void *u)
-{
-#if defined(CONF_FAMILY_UNIX)
-	pthread_t id;
-	pthread_create(&id, NULL, (void *(*)(void*))threadfunc, u);
-	return (void*)id;
-#elif defined(CONF_FAMILY_WINDOWS)
-	return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)threadfunc, u, 0, NULL);
-#else
-	#error not implemented
-#endif
-}
-
-/* DDNET MODIFICATION START *******************************************/
 void *thread_init(void (*threadfunc)(void *), void *u)
 {
 #if defined(CONF_FAMILY_UNIX)
@@ -400,7 +386,6 @@ void *thread_init(void (*threadfunc)(void *), void *u)
 	#error not implemented
 #endif
 }
-/* DDNET MODIFICATION END *********************************************/
 
 void thread_wait(void *thread)
 {
@@ -493,7 +478,7 @@ void lock_destroy(LOCK lock)
 	mem_free(lock);
 }
 
-int lock_try(LOCK lock)
+int lock_trylock(LOCK lock)
 {
 #if defined(CONF_FAMILY_UNIX)
 	return pthread_mutex_trylock((LOCKINTERNAL *)lock);
@@ -515,18 +500,6 @@ void lock_wait(LOCK lock)
 #endif
 }
 
-void lock_release(LOCK lock)
-{
-#if defined(CONF_FAMILY_UNIX)
-	pthread_mutex_unlock((LOCKINTERNAL *)lock);
-#elif defined(CONF_FAMILY_WINDOWS)
-	LeaveCriticalSection((LPCRITICAL_SECTION)lock);
-#else
-	#error not implemented on this platform
-#endif
-}
-
-/* DDNET MODIFICATION START *******************************************/
 void lock_unlock(LOCK lock)
 {
 #if defined(CONF_FAMILY_UNIX)
@@ -537,7 +510,6 @@ void lock_unlock(LOCK lock)
 	#error not implemented on this platform
 #endif
 }
-/* DDNET MODIFICATION END *********************************************/
 
 #if !defined(CONF_PLATFORM_MACOSX)
 	#if defined(CONF_FAMILY_UNIX)
@@ -884,7 +856,7 @@ static int priv_net_close_all_sockets(NETSOCKET sock)
 	return 0;
 }
 
-static int priv_net_create_socket(int domain, int type, struct sockaddr *addr, int sockaddrlen)
+static int priv_net_create_socket(int domain, int type, struct sockaddr *addr, int sockaddrlen, int use_random_port)
 {
 	int sock, e;
 
@@ -916,27 +888,46 @@ static int priv_net_create_socket(int domain, int type, struct sockaddr *addr, i
 		dbg_msg("net", "failed to setsockopt SO_REUSEPORT");
 	}
 	/* bind the socket */
-	e = bind(sock, addr, sockaddrlen);
-	if(e != 0)
+	while(1)
 	{
+		/* pick random port */
+		if(use_random_port)
+		{
+			int port = htons(rand()%16384+49152);	/* 49152 to 65535 */
+			if(domain == AF_INET)
+				((struct sockaddr_in *)(addr))->sin_port = port;
+			else
+				((struct sockaddr_in6 *)(addr))->sin6_port = port;
+		}
+
+		e = bind(sock, addr, sockaddrlen);
+		if(e == 0)
+			break;
+		else
+		{
 #if defined(CONF_FAMILY_WINDOWS)
-		char buf[128];
-		int error = WSAGetLastError();
-		if(FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS, 0, error, 0, buf, sizeof(buf), 0) == 0)
-			buf[0] = 0;
-		dbg_msg("net", "failed to bind socket with domain %d and type %d (%d '%s')", domain, type, error, buf);
+			char buf[128];
+			int error = WSAGetLastError();
+			if(error == WSAEADDRINUSE && use_random_port)
+				continue;
+			if(FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS, 0, error, 0, buf, sizeof(buf), 0) == 0)
+				buf[0] = 0;
+			dbg_msg("net", "failed to bind socket with domain %d and type %d (%d '%s')", domain, type, error, buf);
 #else
-		dbg_msg("net", "failed to bind socket with domain %d and type %d (%d '%s')", domain, type, errno, strerror(errno));
+			if(errno == EADDRINUSE && use_random_port)
+				continue;
+			dbg_msg("net", "failed to bind socket with domain %d and type %d (%d '%s')", domain, type, errno, strerror(errno));
 #endif
-		priv_net_close_socket(sock);
-		return -1;
+			priv_net_close_socket(sock);
+			return -1;
+		}
 	}
 
 	/* return the newly created socket */
 	return sock;
 }
 
-NETSOCKET net_udp_create(NETADDR bindaddr)
+NETSOCKET net_udp_create(NETADDR bindaddr, int use_random_port)
 {
 	NETSOCKET sock = invalid_socket;
 	NETADDR tmpbindaddr = bindaddr;
@@ -951,7 +942,7 @@ NETSOCKET net_udp_create(NETADDR bindaddr)
 		/* bind, we should check for error */
 		tmpbindaddr.type = NETTYPE_IPV4;
 		netaddr_to_sockaddr_in(&tmpbindaddr, &addr);
-		socket = priv_net_create_socket(AF_INET, SOCK_DGRAM, (struct sockaddr *)&addr, sizeof(addr));
+		socket = priv_net_create_socket(AF_INET, SOCK_DGRAM, (struct sockaddr *)&addr, sizeof(addr), use_random_port);
 		if(socket >= 0)
 		{
 			sock.type |= NETTYPE_IPV4;
@@ -973,7 +964,7 @@ NETSOCKET net_udp_create(NETADDR bindaddr)
 		/* bind, we should check for error */
 		tmpbindaddr.type = NETTYPE_IPV6;
 		netaddr_to_sockaddr_in6(&tmpbindaddr, &addr);
-		socket = priv_net_create_socket(AF_INET6, SOCK_DGRAM, (struct sockaddr *)&addr, sizeof(addr));
+		socket = priv_net_create_socket(AF_INET6, SOCK_DGRAM, (struct sockaddr *)&addr, sizeof(addr), use_random_port);
 		if(socket >= 0)
 		{
 			sock.type |= NETTYPE_IPV6;
@@ -1110,7 +1101,7 @@ NETSOCKET net_tcp_create(NETADDR bindaddr)
 		/* bind, we should check for error */
 		tmpbindaddr.type = NETTYPE_IPV4;
 		netaddr_to_sockaddr_in(&tmpbindaddr, &addr);
-		socket = priv_net_create_socket(AF_INET, SOCK_STREAM, (struct sockaddr *)&addr, sizeof(addr));
+		socket = priv_net_create_socket(AF_INET, SOCK_STREAM, (struct sockaddr *)&addr, sizeof(addr), 0);
 		if(socket >= 0)
 		{
 			sock.type |= NETTYPE_IPV4;
@@ -1126,7 +1117,7 @@ NETSOCKET net_tcp_create(NETADDR bindaddr)
 		/* bind, we should check for error */
 		tmpbindaddr.type = NETTYPE_IPV6;
 		netaddr_to_sockaddr_in6(&tmpbindaddr, &addr);
-		socket = priv_net_create_socket(AF_INET6, SOCK_STREAM, (struct sockaddr *)&addr, sizeof(addr));
+		socket = priv_net_create_socket(AF_INET6, SOCK_STREAM, (struct sockaddr *)&addr, sizeof(addr), 0);
 		if(socket >= 0)
 		{
 			sock.type |= NETTYPE_IPV6;
@@ -2010,24 +2001,24 @@ int str_utf8_decode(const char **ptr)
 		}
 		else if((*buf&0xE0) == 0xC0) /* 110xxxxx */
 		{
-			ch  = (*buf++ & 0x3F) << 6; if(!(*buf)) break;
+			ch  = (*buf++ & 0x3F) << 6; if(!(*buf) || (*buf&0xC0) != 0x80) break;
 			ch += (*buf++ & 0x3F);
-			if(ch == 0) ch = -1;
+			if(ch < 0x80 || ch > 0x7FF) ch = -1;
 		}
 		else  if((*buf & 0xF0) == 0xE0)	/* 1110xxxx */
 		{
-			ch  = (*buf++ & 0x1F) << 12; if(!(*buf)) break;
-			ch += (*buf++ & 0x3F) <<  6; if(!(*buf)) break;
+			ch  = (*buf++ & 0x1F) << 12; if(!(*buf) || (*buf&0xC0) != 0x80) break;
+			ch += (*buf++ & 0x3F) <<  6; if(!(*buf) || (*buf&0xC0) != 0x80) break;
 			ch += (*buf++ & 0x3F);
-			if(ch == 0) ch = -1;
+			if(ch < 0x800 || ch > 0xFFFF) ch = -1;
 		}
 		else if((*buf & 0xF8) == 0xF0)	/* 11110xxx */
 		{
-			ch  = (*buf++ & 0x0F) << 18; if(!(*buf)) break;
-			ch += (*buf++ & 0x3F) << 12; if(!(*buf)) break;
-			ch += (*buf++ & 0x3F) <<  6; if(!(*buf)) break;
+			ch  = (*buf++ & 0x0F) << 18; if(!(*buf) || (*buf&0xC0) != 0x80) break;
+			ch += (*buf++ & 0x3F) << 12; if(!(*buf) || (*buf&0xC0) != 0x80) break;
+			ch += (*buf++ & 0x3F) <<  6; if(!(*buf) || (*buf&0xC0) != 0x80) break;
 			ch += (*buf++ & 0x3F);
-			if(ch == 0) ch = -1;
+			if(ch < 0x10000 || ch > 0x10FFFF) ch = -1;
 		}
 		else
 		{

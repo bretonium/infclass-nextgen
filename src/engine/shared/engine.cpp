@@ -1,5 +1,6 @@
 /* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
+#include <stdlib.h> // srand
 
 #include <base/system.h>
 
@@ -61,6 +62,7 @@ public:
 
 	CEngine(const char *pAppname)
 	{
+		srand(time_get());
 		dbg_logger_stdout();
 		dbg_logger_debugger();
 

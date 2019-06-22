@@ -1121,8 +1121,6 @@ void CCharacter::FireWeapon()
 				
 			}
 
-			Server()->SendMsg(&Msg, 0,m_pPlayer->GetCID());
-
 			GameServer()->CreateSound(m_Pos, SOUND_SHOTGUN_FIRE);
 		} break;
 

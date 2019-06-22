@@ -1149,7 +1149,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 		// system message
 		if(Msg == NETMSG_INFO)
 		{
-			if(m_aClients[ClientID].m_State == CClient::STATE_AUTH)
+			if((pPacket->m_Flags&NET_CHUNKFLAG_VITAL) != 0 && m_aClients[ClientID].m_State == CClient::STATE_AUTH)
 			{
 				const char *pVersion = Unpacker.GetString(CUnpacker::SANITIZE_CC);
 				if(str_comp(pVersion, "0.6 626fce9a778df4d4") != 0 && str_comp(pVersion, GameServer()->NetVersion()) != 0)
@@ -1175,7 +1175,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 		}
 		else if(Msg == NETMSG_REQUEST_MAP_DATA)
 		{
-			if(m_aClients[ClientID].m_State < CClient::STATE_CONNECTING)
+			if((pPacket->m_Flags&NET_CHUNKFLAG_VITAL) == 0 || m_aClients[ClientID].m_State < CClient::STATE_CONNECTING)
 				return;
 
 			int Chunk = Unpacker.GetInt();
@@ -1222,7 +1222,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 		}
 		else if(Msg == NETMSG_READY)
 		{
-			if(m_aClients[ClientID].m_State == CClient::STATE_CONNECTING)
+			if((pPacket->m_Flags&NET_CHUNKFLAG_VITAL) != 0 && m_aClients[ClientID].m_State == CClient::STATE_CONNECTING)
 			{
 				char aAddrStr[NETADDR_MAXSTRSIZE];
 				net_addr_str(m_NetServer.ClientAddr(ClientID), aAddrStr, sizeof(aAddrStr), true);
@@ -1236,7 +1236,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 		}
 		else if(Msg == NETMSG_ENTERGAME)
 		{
-			if(m_aClients[ClientID].m_State == CClient::STATE_READY && GameServer()->IsClientReady(ClientID))
+			if((pPacket->m_Flags&NET_CHUNKFLAG_VITAL) != 0 && m_aClients[ClientID].m_State == CClient::STATE_READY && GameServer()->IsClientReady(ClientID))
 			{
 				char aAddrStr[NETADDR_MAXSTRSIZE];
 				net_addr_str(m_NetServer.ClientAddr(ClientID), aAddrStr, sizeof(aAddrStr), true);
@@ -1308,7 +1308,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 		{
 			const char *pCmd = Unpacker.GetString();
 
-			if(Unpacker.Error() == 0 && m_aClients[ClientID].m_Authed)
+			if((pPacket->m_Flags&NET_CHUNKFLAG_VITAL) != 0 && Unpacker.Error() == 0 && m_aClients[ClientID].m_Authed)
 			{
 				char aBuf[256];
 				str_format(aBuf, sizeof(aBuf), "ClientID=%d rcon='%s'", ClientID, pCmd);
@@ -1338,7 +1338,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 			Unpacker.GetString(); // login name, not used
 			pPw = Unpacker.GetString(CUnpacker::SANITIZE_CC);
 
-			if(Unpacker.Error() == 0)
+			if((pPacket->m_Flags&NET_CHUNKFLAG_VITAL) != 0 && Unpacker.Error() == 0)
 			{
 				if(g_Config.m_SvRconPassword[0] == 0 && g_Config.m_SvRconModPassword[0] == 0)
 				{
@@ -1455,7 +1455,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 	else
 	{
 		// game message
-		if(m_aClients[ClientID].m_State >= CClient::STATE_READY)
+		if((pPacket->m_Flags&NET_CHUNKFLAG_VITAL) != 0 && m_aClients[ClientID].m_State >= CClient::STATE_READY)
 			GameServer()->OnMessage(Msg, &Unpacker, ClientID);
 	}
 }
@@ -1533,7 +1533,7 @@ void CServer::SendServerInfo(const NETADDR *pAddr, int Token)
 					str_format(aBuf, sizeof(aBuf), "%s | %s: %s", g_Config.m_SvName, "HeroOfTheDay", m_aChallengeWinner);
 					break;
 			}
-			lock_release(m_ChallengeLock);
+			lock_unlock(m_ChallengeLock);
 			p.AddString(aBuf, 64);
 		}
 		else
@@ -2131,7 +2131,7 @@ int CServer::Run()
 						delete m_lGameServerCmds[i];
 					}
 					m_lGameServerCmds.clear();
-					lock_release(m_GameServerCmdLock);
+					lock_unlock(m_GameServerCmdLock);
 				} 
 #endif
 			}
@@ -2928,7 +2928,7 @@ void CServer::AddGameServerCmd(CGameServerCmd* pCmd)
 {
 	lock_wait(m_GameServerCmdLock);
 	m_lGameServerCmds.add(pCmd);
-	lock_release(m_GameServerCmdLock);
+	lock_unlock(m_GameServerCmdLock);
 }
 
 class CGameServerCmd_SendChatMOTD : public CServer::CGameServerCmd
@@ -3684,7 +3684,7 @@ void CServer::ShowChallenge(int ClientID)
 		int ChallengeType;
 		lock_wait(m_ChallengeLock);
 		ChallengeType = m_ChallengeType;
-		lock_release(m_ChallengeLock);
+		lock_unlock(m_ChallengeLock);
 		
 		CSqlJob* pJob = new CSqlJob_Server_ShowChallenge(this, m_aCurrentMap, ClientID, ChallengeType);
 		pJob->Start();
@@ -3748,7 +3748,7 @@ public:
 			lock_wait(m_pServer->m_ChallengeLock);
 			m_pServer->m_ChallengeType = ChallengeType;
 			str_copy(m_pServer->m_aChallengeWinner, aWinner, sizeof(m_pServer->m_aChallengeWinner));
-			lock_release(m_pServer->m_ChallengeLock);
+			lock_unlock(m_pServer->m_ChallengeLock);
 		}
 		catch (sql::SQLException &e)
 		{

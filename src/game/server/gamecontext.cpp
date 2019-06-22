@@ -2370,8 +2370,8 @@ bool CGameContext::ConPause(IConsole::IResult *pResult, void *pUserData)
 	if(pSelf->m_pController->IsGameOver())
 		return true;
 
-	pSelf->m_World.m_Paused ^= 1;
-	
+	pSelf->m_pController->TogglePause();
+
 	return true;
 }
 

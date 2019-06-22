@@ -44,6 +44,7 @@ protected:
 	int m_aTeamscore[2];
 
 	int m_Warmup;
+	int m_UnpauseTimer;
 	int m_RoundCount;
 
 	int m_GameFlags;
@@ -64,6 +65,7 @@ public:
 	virtual void DoWincheck();
 
 	void DoWarmup(int Seconds);
+	void TogglePause();
 
 	void StartRound();
 	virtual void EndRound();

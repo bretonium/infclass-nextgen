@@ -15,7 +15,7 @@ public:
 	union { T y,v; };
 
 	vector2_base() {}
-	vector2_base(float nx, float ny)
+	vector2_base(T nx, T ny)
 	{
 		x = nx;
 		y = ny;
@@ -106,7 +106,7 @@ public:
 	union { T z,b,v,l; };
 
 	vector3_base() {}
-	vector3_base(float nx, float ny, float nz)
+	vector3_base(T nx, T ny, T nz)
 	{
 		x = nx;
 		y = ny;
@@ -185,7 +185,7 @@ public:
 	union { T w,a; };
 
 	vector4_base() {}
-	vector4_base(float nx, float ny, float nz, float nw)
+	vector4_base(T nx, T ny, T nz, T nw)
 	{
 		x = nx;
 		y = ny;
