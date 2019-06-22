@@ -3,9 +3,11 @@
 #include <base/system.h>
 
 #include <engine/console.h>
+#include <engine/shared/config.h>
 
 #include "netban.h"
 #include "network.h"
+#include "protocol.h"
 
 
 bool CNetServer::Open(NETADDR BindAddr, CNetBan *pNetBan, int MaxClients, int MaxClientsPerIP, int Flags)
@@ -49,7 +51,7 @@ int CNetServer::Close()
 	return 0;
 }
 
-int CNetServer::Drop(int ClientID, const char *pReason)
+int CNetServer::Drop(int ClientID, int Type, const char *pReason)
 {
 	// TODO: insert lots of checks here
 	/*NETADDR Addr = ClientAddr(ClientID);
@@ -60,7 +62,7 @@ int CNetServer::Drop(int ClientID, const char *pReason)
 		pReason
 		);*/
 	if(m_pfnDelClient)
-		m_pfnDelClient(ClientID, pReason, m_UserPtr);
+		m_pfnDelClient(ClientID, Type, pReason, m_UserPtr);
 
 	m_aSlots[ClientID].m_Connection.Disconnect(pReason);
 
@@ -78,7 +80,7 @@ int CNetServer::Update()
 			if(Now - m_aSlots[i].m_Connection.ConnectTime() < time_freq() && NetBan())
 				NetBan()->BanAddr(ClientAddr(i), 60, "Stressing network");
 			else
-				Drop(i, m_aSlots[i].m_Connection.ErrorString());
+				Drop(i, CLIENTDROPTYPE_STRESSING, m_aSlots[i].m_Connection.ErrorString());
 		}
 	}
 
@@ -104,7 +106,7 @@ int CNetServer::Recv(CNetChunk *pChunk)
 		// no more packets for now
 		if(Bytes <= 0)
 			break;
-
+							
 		if(CNetBase::UnpackPacket(m_RecvUnpacker.m_aBuffer, Bytes, &m_RecvUnpacker.m_Data) == 0)
 		{
 			// check if we just should drop the packet
@@ -118,6 +120,10 @@ int CNetServer::Recv(CNetChunk *pChunk)
 
 			if(m_RecvUnpacker.m_Data.m_Flags&NET_PACKETFLAG_CONNLESS)
 			{
+				//refuse server info for banned clients (vanilla behavior)
+				if(NetBan() && NetBan()->IsBanned(&Addr, aBuf, sizeof(aBuf)))
+					continue;
+
 				pChunk->m_Flags = NETSENDFLAG_CONNLESS;
 				pChunk->m_ClientID = -1;
 				pChunk->m_Address = Addr;
@@ -127,79 +133,118 @@ int CNetServer::Recv(CNetChunk *pChunk)
 			}
 			else
 			{
-				// TODO: check size here
+				//If the message is NET_PACKETFLAG_CONTROL, send fake
+				//control message to force the client to send a NETMSG_INFO	
 				if(m_RecvUnpacker.m_Data.m_Flags&NET_PACKETFLAG_CONTROL && m_RecvUnpacker.m_Data.m_aChunkData[0] == NET_CTRLMSG_CONNECT)
 				{
-					bool Found = false;
+					CNetBase::SendControlMsg(m_Socket, &Addr, 0, NET_CTRLMSG_CONNECTACCEPT, 0, 0);
+				}
+				else
+				{
+					// not found, client that wants to connect
 
-					// check if we already got this client
+					//refuse connect for banned clients
+					if(NetBan() && NetBan()->IsBanned(&Addr, aBuf, sizeof(aBuf)))
+					{
+						// banned, reply with a message
+						CNetBase::SendControlMsg(m_Socket, &Addr, 0, NET_CTRLMSG_CLOSE, aBuf, str_length(aBuf)+1);
+						continue;
+ 					}
+
+					int ClientID = -1;
+					
 					for(int i = 0; i < MaxClients(); i++)
 					{
 						if(m_aSlots[i].m_Connection.State() != NET_CONNSTATE_OFFLINE &&
 							net_addr_comp(m_aSlots[i].m_Connection.PeerAddress(), &Addr) == 0)
 						{
-							Found = true; // silent ignore.. we got this client already
+							ClientID = i;
 							break;
 						}
 					}
-
-					// client that wants to connect
-					if(!Found)
+					
+					//The client is unknown, check for NETMSG_INFO
+					if(ClientID < 0)
 					{
-						// only allow a specific number of players with the same ip
-						NETADDR ThisAddr = Addr, OtherAddr;
-						int FoundAddr = 1;
-						ThisAddr.port = 0;
-						for(int i = 0; i < MaxClients(); ++i)
+						//If the message is NETMSG_INFO, connect the client.
+						static const char m_NetMsgInfoHeader1[] = { 0x00, 0x00, 0x01 };
+						static const char m_NetMsgInfoHeader2[] = { 0x01, 0x03 };
+						if(Bytes > 10
+							&& (mem_comp(m_RecvUnpacker.m_aBuffer, m_NetMsgInfoHeader1, sizeof(m_NetMsgInfoHeader1)/sizeof(unsigned char)) == 0)
+							&& (mem_comp(m_RecvUnpacker.m_aBuffer+5, m_NetMsgInfoHeader2, sizeof(m_NetMsgInfoHeader2)/sizeof(unsigned char)) == 0)
+							&& m_RecvUnpacker.m_aBuffer[Bytes-1] == 0
+						)
 						{
-							if(m_aSlots[i].m_Connection.State() == NET_CONNSTATE_OFFLINE)
-								continue;
-
-							OtherAddr = *m_aSlots[i].m_Connection.PeerAddress();
-							OtherAddr.port = 0;
-							if(!net_addr_comp(&ThisAddr, &OtherAddr))
+							//Check password if captcha are enabled
+							if(g_Config.m_InfCaptcha)
 							{
-								if(FoundAddr++ >= m_MaxClientsPerIP)
+								const unsigned char* pPassword = 0;
+								int Iter = 7; //Skin the header and the ID
+								while(m_RecvUnpacker.m_aBuffer[Iter] != 0 && Iter < Bytes)
+									++Iter;
+								if(Iter+1 < Bytes)
+									pPassword = m_RecvUnpacker.m_aBuffer+Iter+1;
+								
+								if(!pPassword || (str_comp(GetCaptcha(&Addr, true), (const char*) pPassword) != 0))
 								{
-									char aBuf[128];
-									str_format(aBuf, sizeof(aBuf), "Only %d players with the same IP are allowed", m_MaxClientsPerIP);
-									CNetBase::SendControlMsg(m_Socket, &Addr, 0, NET_CTRLMSG_CLOSE, aBuf, sizeof(aBuf));
+									const char WrongPasswordMsg[] = "Wrong password";
+									CNetBase::SendControlMsg(m_Socket, &Addr, 0, NET_CTRLMSG_CLOSE, WrongPasswordMsg, sizeof(WrongPasswordMsg));
 									return 0;
 								}
 							}
-						}
-
-						for(int i = 0; i < MaxClients(); i++)
-						{
-							if(m_aSlots[i].m_Connection.State() == NET_CONNSTATE_OFFLINE)
+							
+							// only allow a specific number of players with the same ip
+							NETADDR ThisAddr = Addr, OtherAddr;
+							int FoundAddr = 1;
+							ThisAddr.port = 0;
+							for(int i = 0; i < MaxClients(); ++i)
 							{
-								Found = true;
-								m_aSlots[i].m_Connection.Feed(&m_RecvUnpacker.m_Data, &Addr);
-								if(m_pfnNewClient)
-									m_pfnNewClient(i, m_UserPtr);
-								break;
+								if(m_aSlots[i].m_Connection.State() == NET_CONNSTATE_OFFLINE)
+									continue;
+
+								OtherAddr = *m_aSlots[i].m_Connection.PeerAddress();
+								OtherAddr.port = 0;
+								if(!net_addr_comp(&ThisAddr, &OtherAddr))
+								{
+									if(FoundAddr++ >= m_MaxClientsPerIP)
+									{
+										char aBuf[128];
+										str_format(aBuf, sizeof(aBuf), "Only %d players with the same IP are allowed", m_MaxClientsPerIP);
+										CNetBase::SendControlMsg(m_Socket, &Addr, 0, NET_CTRLMSG_CLOSE, aBuf, sizeof(aBuf));
+										return 0;
+									}
+								}
+							}
+
+							bool Found = false;
+							for(int i = 0; i < MaxClients(); i++)
+							{
+								if(m_aSlots[i].m_Connection.State() == NET_CONNSTATE_OFFLINE)
+								{
+									Found = true;
+									m_aSlots[i].m_Connection.SimulateConnexionWithInfo(&Addr);
+									if(m_pfnNewClient)
+										m_pfnNewClient(i, m_UserPtr);
+									ClientID = i;
+									break;
+								}
+							}
+
+							if(!Found)
+							{
+								const char FullMsg[] = "This server is full";
+								CNetBase::SendControlMsg(m_Socket, &Addr, 0, NET_CTRLMSG_CLOSE, FullMsg, sizeof(FullMsg));
 							}
 						}
-
-						if(!Found)
-						{
-							const char FullMsg[] = "This server is full";
-							CNetBase::SendControlMsg(m_Socket, &Addr, 0, NET_CTRLMSG_CLOSE, FullMsg, sizeof(FullMsg));
-						}
+						//Otherwise, just drop the message
 					}
-				}
-				else
-				{
-					// normal packet, find matching slot
-					for(int i = 0; i < MaxClients(); i++)
+					
+					if(ClientID >= 0)
 					{
-						if(net_addr_comp(m_aSlots[i].m_Connection.PeerAddress(), &Addr) == 0)
+						if(m_aSlots[ClientID].m_Connection.Feed(&m_RecvUnpacker.m_Data, &Addr))
 						{
-							if(m_aSlots[i].m_Connection.Feed(&m_RecvUnpacker.m_Data, &Addr))
-							{
-								if(m_RecvUnpacker.m_Data.m_DataSize)
-									m_RecvUnpacker.Start(&Addr, &m_aSlots[i].m_Connection, i);
-							}
+							if(m_RecvUnpacker.m_Data.m_DataSize)
+								m_RecvUnpacker.Start(&Addr, &m_aSlots[ClientID].m_Connection, ClientID);
 						}
 					}
 				}
@@ -238,7 +283,7 @@ int CNetServer::Send(CNetChunk *pChunk)
 		}
 		else
 		{
-			Drop(pChunk->m_ClientID, "Error sending data");
+			Drop(pChunk->m_ClientID, CLIENTDROPTYPE_ERROR, "Error sending data");
 		}
 	}
 	return 0;
@@ -253,4 +298,33 @@ void CNetServer::SetMaxClientsPerIP(int Max)
 		Max = NET_MAX_CLIENTS;
 
 	m_MaxClientsPerIP = Max;
+}
+
+const char* CNetServer::GetCaptcha(const NETADDR* pAddr, bool Debug)
+{
+	if(!m_lCaptcha.size())
+		return "???";
+	
+	unsigned int IpHash = 0;
+	for(unsigned int i=0; i<4; i++)
+	{
+		IpHash |= (pAddr->ip[i]<<(i*8));
+	}
+	
+	unsigned int CaptchaId = IpHash%m_lCaptcha.size();
+	
+	if(Debug)
+	{
+		char aBuf[64];
+		net_addr_str(pAddr, aBuf, 64, 0);
+	}
+	
+	return m_lCaptcha[CaptchaId].m_aText;
+}
+
+void CNetServer::AddCaptcha(const char* pText)
+{
+	CCaptcha Captcha;
+	str_copy(Captcha.m_aText, pText, sizeof(Captcha));
+	m_lCaptcha.add(Captcha);
 }

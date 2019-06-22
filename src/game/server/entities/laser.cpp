@@ -3,10 +3,12 @@
 #include <game/generated/protocol.h>
 #include <game/server/gamecontext.h>
 #include "laser.h"
+#include <engine/server/roundstatistics.h>
 
-CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner)
+CLaser::CLaser(CGameWorld *pGameWorld, vec2 Pos, vec2 Direction, float StartEnergy, int Owner, int Dmg)
 : CEntity(pGameWorld, CGameWorld::ENTTYPE_LASER)
 {
+	m_Dmg = Dmg;
 	m_Pos = Pos;
 	m_Owner = Owner;
 	m_Energy = StartEnergy;
@@ -29,7 +31,41 @@ bool CLaser::HitCharacter(vec2 From, vec2 To)
 	m_From = From;
 	m_Pos = At;
 	m_Energy = -1;
-	pHit->TakeDamage(vec2(0.f, 0.f), GameServer()->Tuning()->m_LaserDamage, m_Owner, WEAPON_RIFLE);
+	
+	if (pOwnerChar && pOwnerChar->GetClass() == PLAYERCLASS_MEDIC) { // Revive zombie
+		const int MIN_ZOMBIES = 4;
+		const int DAMAGE_ON_REVIVE = 17;
+		int old_class = pHit->GetPlayer()->GetOldClass();
+		auto& medic = pOwnerChar;
+		auto& zombie = pHit;
+
+		char aBuf[256];
+		if (medic->GetPlayer()->GetCharacter() && medic->GetPlayer()->GetCharacter()->GetHealthArmorSum() <= DAMAGE_ON_REVIVE) {
+			str_format(aBuf, sizeof(aBuf), "You need at least %d hp", DAMAGE_ON_REVIVE + 1);
+			GameServer()->SendBroadcast(m_Owner, aBuf, BROADCAST_PRIORITY_GAMEANNOUNCE, BROADCAST_DURATION_GAMEANNOUNCE);
+		}
+		else if (GameServer()->GetZombieCount() <= MIN_ZOMBIES) {
+			str_format(aBuf, sizeof(aBuf), "Too few zombies (less than %d)", MIN_ZOMBIES+1);
+			GameServer()->SendBroadcast(m_Owner, aBuf, BROADCAST_PRIORITY_GAMEANNOUNCE, BROADCAST_DURATION_GAMEANNOUNCE);
+		}
+		else {
+			zombie->GetPlayer()->SetClass(old_class);
+			if (zombie->GetPlayer()->GetCharacter()) {
+				zombie->GetPlayer()->GetCharacter()->SetHealthArmor(1, 0);
+				zombie->Unfreeze();
+				medic->TakeDamage(vec2(0.f, 0.f), DAMAGE_ON_REVIVE * 2, m_Owner, WEAPON_RIFLE, TAKEDAMAGEMODE_NOINFECTION);
+				str_format(aBuf, sizeof(aBuf), "Medic %s revived %s",
+						Server()->ClientName(medic->GetPlayer()->GetCID()),
+						Server()->ClientName(zombie->GetPlayer()->GetCID()));
+				GameServer()->SendChatTarget(-1, aBuf);
+				int ClientID = medic->GetPlayer()->GetCID();
+				Server()->RoundStatistics()->OnScoreEvent(ClientID, SCOREEVENT_MEDIC_REVIVE, medic->GetClass(), Server()->ClientName(ClientID), GameServer()->Console());
+			}
+		}
+	}
+	else {
+		pHit->TakeDamage(vec2(0.f, 0.f), m_Dmg, m_Owner, WEAPON_RIFLE, TAKEDAMAGEMODE_NOINFECTION);
+	}
 	return true;
 }
 

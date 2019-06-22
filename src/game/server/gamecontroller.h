@@ -4,6 +4,7 @@
 #define GAME_SERVER_GAMECONTROLLER_H
 
 #include <base/vmath.h>
+#include <base/tl/array.h>
 
 /*
 	Class: Game Controller
@@ -12,9 +13,6 @@
 */
 class IGameController
 {
-	vec2 m_aaSpawnPoints[3][64];
-	int m_aNumSpawnPoints[3];
-
 	class CGameContext *m_pGameServer;
 	class IServer *m_pServer;
 
@@ -22,26 +20,18 @@ protected:
 	CGameContext *GameServer() const { return m_pGameServer; }
 	IServer *Server() const { return m_pServer; }
 
-	struct CSpawnEval
-	{
-		CSpawnEval()
-		{
-			m_Got = false;
-			m_FriendlyTeam = -1;
-			m_Pos = vec2(100,100);
-		}
+/* INFECTION MODIFICATION START ***************************************/
+	array<vec2> m_HeroFlagPositions;
+	array<vec2> m_SpawnPoints[2];
+	int m_aNumSpawnPoints[2];
+	int m_RoundId;
+	
+public:
+	inline const array<vec2>& HeroFlagPositions() const { return m_HeroFlagPositions; }
+/* INFECTION MODIFICATION START ***************************************/
 
-		vec2 m_Pos;
-		bool m_Got;
-		int m_FriendlyTeam;
-		float m_Score;
-	};
-
-	float EvaluateSpawnPos(CSpawnEval *pEval, vec2 Pos);
-	void EvaluateSpawnType(CSpawnEval *pEval, int Type);
-	bool EvaluateSpawn(class CPlayer *pP, vec2 *pPos);
-
-	void CycleMap();
+protected:
+	void CycleMap(bool Forced = false);
 	void ResetGame();
 
 	char m_aMapWish[128];
@@ -62,24 +52,38 @@ protected:
 
 public:
 	const char *m_pGameType;
+	
+	void SkipMap();
 
 	bool IsTeamplay() const;
 	bool IsGameOver() const { return m_GameOverTick != -1; }
 
 	IGameController(class CGameContext *pGameServer);
 	virtual ~IGameController();
-
+	
 	virtual void DoWincheck();
 
 	void DoWarmup(int Seconds);
 
 	void StartRound();
-	void EndRound();
+	virtual void EndRound();
 	void ChangeMap(const char *pToMap);
+	int GetRoundCount();
+	bool IsRoundEndTime();
 
 	bool IsFriendlyFire(int ClientID1, int ClientID2);
 
 	bool IsForceBalanced();
+
+	struct CMapRotationInfo
+	{
+		static const int MAX_MAPS = 256;
+		int m_MapNameIndices[MAX_MAPS]; // saves Indices where mapNames start inside of g_Config.m_SvMaprotation
+		int m_MapCount; // how many maps are in rotation
+		int m_CurrentMapNumber; // at what place the current map is, from 0 to (m_MapCount-1)
+	};
+	void GetMapRotationInfo(CMapRotationInfo *pMapRotationInfo);
+	void GetWordFromList(char *pNextWord, const char *pList, int ListIndex);
 
 	/*
 
@@ -89,6 +93,8 @@ public:
 	virtual void Tick();
 
 	virtual void Snap(int SnappingClient);
+	
+	virtual bool CanVote();
 
 	/*
 		Function: on_entity
@@ -102,7 +108,7 @@ public:
 		Returns:
 			bool?
 	*/
-	virtual bool OnEntity(int Index, vec2 Pos);
+	virtual bool OnEntity(const char* pName, vec2 Pivot, vec2 P0, vec2 P1, vec2 P2, vec2 P3, int PosEnv);
 
 	/*
 		Function: on_CCharacter_spawn
@@ -129,7 +135,17 @@ public:
 	virtual void OnPlayerInfoChange(class CPlayer *pP);
 
 	//
-	virtual bool CanSpawn(int Team, vec2 *pPos);
+/* INFECTION MODIFICATION START ***************************************/
+	virtual bool PreSpawn(CPlayer* pPlayer, vec2 *pPos);
+	virtual int ChooseHumanClass(CPlayer* pPlayer);
+	virtual int ChooseInfectedClass(CPlayer* pPlayer);
+	virtual bool IsChoosableClass(int PlayerClass);
+	virtual bool IsSpawnable(vec2 Position, int TeleZoneIndex);
+	virtual void OnClientDrop(int ClientID, int Type) {};
+	virtual bool IsInfectionStarted() = 0;
+	
+	int GetRoundId() { return m_RoundId; }
+/* INFECTION MODIFICATION END *****************************************/
 
 	/*
 
@@ -142,6 +158,7 @@ public:
 	int ClampTeam(int Team);
 
 	virtual void PostReset();
+	double GetTime();
 };
 
 #endif

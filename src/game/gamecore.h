@@ -33,6 +33,14 @@ public:
 		#include "tuning.h"
 		#undef MACRO_TUNING_PARAM
 	}
+	
+	bool operator==(const CTuningParams& TuningParams)
+	{
+		#define MACRO_TUNING_PARAM(Name,ScriptName,Value) if(m_##Name != TuningParams.m_##Name) return false;
+		#include "tuning.h"
+		#undef MACRO_TUNING_PARAM
+		return true;
+	}
 
 	static const char *m_apNames[];
 
@@ -174,6 +182,22 @@ public:
 
 class CCharacterCore
 {
+public:
+	struct CParams : public CTuningParams
+	{
+		const CTuningParams* m_pTuningParams;
+		int m_HookMode;
+		int m_HookGrabTime;
+		
+		CParams(const CTuningParams* pTuningParams)
+		{
+			m_pTuningParams = pTuningParams;
+			m_HookMode = 0;
+			m_HookGrabTime = SERVER_TICK_SPEED+SERVER_TICK_SPEED/5;
+		}
+	};
+
+private:
 	CWorldCore *m_pWorld;
 	CCollision *m_pCollision;
 public:
@@ -185,6 +209,12 @@ public:
 	int m_HookTick;
 	int m_HookState;
 	int m_HookedPlayer;
+	bool m_HookProtected;
+	bool m_Infected;
+	// InfClassR
+	CCharacterCore* m_Passenger;
+	bool m_IsPassenger;
+	bool m_ProbablyStucked;
 
 	int m_Jumped;
 
@@ -196,12 +226,13 @@ public:
 
 	void Init(CWorldCore *pWorld, CCollision *pCollision);
 	void Reset();
-	void Tick(bool UseInput);
-	void Move();
+	void Tick(bool UseInput, CParams* pParams);
+	void Move(CParams* pParams);
 
 	void Read(const CNetObj_CharacterCore *pObjCore);
 	void Write(CNetObj_CharacterCore *pObjCore);
 	void Quantize();
+	bool IsChildCharacter(CCharacterCore *suspect, CCharacterCore *me);
 };
 
 #endif

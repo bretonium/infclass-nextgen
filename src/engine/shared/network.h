@@ -3,6 +3,7 @@
 #ifndef ENGINE_SHARED_NETWORK_H
 #define ENGINE_SHARED_NETWORK_H
 
+#include <base/tl/array.h>
 #include "ringbuffer.h"
 #include "huffman.h"
 
@@ -78,8 +79,19 @@ enum
 	NET_ENUM_TERMINATOR
 };
 
+enum
+{
+	CLIENTDROPTYPE_ERROR = 0,
+	CLIENTDROPTYPE_LOGOUT,
+	CLIENTDROPTYPE_BAN,
+	CLIENTDROPTYPE_KICK,
+	CLIENTDROPTYPE_WRONG_VERSION,
+	CLIENTDROPTYPE_WRONG_PASSWORD,
+	CLIENTDROPTYPE_SHUTDOWN,
+	CLIENTDROPTYPE_STRESSING
+};
 
-typedef int (*NETFUNC_DELCLIENT)(int ClientID, const char* pReason, void *pUser);
+typedef int (*NETFUNC_DELCLIENT)(int ClientID, int Type, const char* pReason, void *pUser);
 typedef int (*NETFUNC_NEWCLIENT)(int ClientID, void *pUser);
 
 struct CNetChunk
@@ -175,6 +187,7 @@ public:
 	int Update();
 	int Flush();
 
+	int SimulateConnexionWithInfo(NETADDR *pAddr);
 	int Feed(CNetPacketConstruct *pPacket, NETADDR *pAddr);
 	int QueueChunk(int Flags, int DataSize, const void *pData);
 
@@ -262,6 +275,12 @@ class CNetServer
 
 	CNetRecvUnpacker m_RecvUnpacker;
 
+	struct CCaptcha
+	{
+		char m_aText[16];
+	};
+	array<CCaptcha> m_lCaptcha;
+
 public:
 	int SetCallbacks(NETFUNC_NEWCLIENT pfnNewClient, NETFUNC_DELCLIENT pfnDelClient, void *pUser);
 
@@ -275,7 +294,7 @@ public:
 	int Update();
 
 	//
-	int Drop(int ClientID, const char *pReason);
+	int Drop(int ClientID, int Type, const char *pReason);
 
 	// status requests
 	const NETADDR *ClientAddr(int ClientID) const { return m_aSlots[ClientID].m_Connection.PeerAddress(); }
@@ -286,6 +305,10 @@ public:
 
 	//
 	void SetMaxClientsPerIP(int Max);
+	
+	void AddCaptcha(const char* pText);
+	const char* GetCaptcha(const NETADDR* pAddr, bool Debug=false);
+	bool IsCaptchaInitialized() { return m_lCaptcha.size() > 0; }
 };
 
 class CNetConsole
@@ -319,7 +342,7 @@ public:
 
 	//
 	int AcceptClient(NETSOCKET Socket, const NETADDR *pAddr);
-	int Drop(int ClientID, const char *pReason);
+	int Drop(int ClientID, int Type, const char *pReason);
 
 	// status requests
 	const NETADDR *ClientAddr(int ClientID) const { return m_aSlots[ClientID].m_Connection.PeerAddress(); }

@@ -199,7 +199,7 @@ CCharacter *CGameWorld::IntersectCharacter(vec2 Pos0, vec2 Pos1, float Radius, v
 	CCharacter *p = (CCharacter *)FindFirst(ENTTYPE_CHARACTER);
 	for(; p; p = (CCharacter *)p->TypeNext())
  	{
-		if(p == pNotThis)
+		if(p == pNotThis || !p->m_Core.m_Infected)
 			continue;
 
 		vec2 IntersectPos = closest_point_on_line(Pos0, Pos1, p->m_Pos);
@@ -231,7 +231,10 @@ CCharacter *CGameWorld::ClosestCharacter(vec2 Pos, float Radius, CEntity *pNotTh
  	{
 		if(p == pNotThis)
 			continue;
-
+			
+		if(p->GetPlayer())
+			continue;
+			
 		float Len = distance(Pos, p->m_Pos);
 		if(Len < p->m_ProximityRadius+Radius)
 		{

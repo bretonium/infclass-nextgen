@@ -26,7 +26,7 @@ public:
 	vector2_base operator +(const vector2_base &v) const { return vector2_base(x+v.x, y+v.y); }
 	vector2_base operator *(const T v) const { return vector2_base(x*v, y*v); }
 	vector2_base operator *(const vector2_base &v) const { return vector2_base(x*v.x, y*v.y); }
-	vector2_base operator /(const T v) const { return vector3_base(x/v, y/v); }
+	vector2_base operator /(const T v) const { return vector2_base(x/v, y/v); }
 	vector2_base operator /(const vector2_base &v) const { return vector2_base(x/v.x, y/v.y); }
 
 	const vector2_base &operator =(const vector2_base &v) { x = v.x; y = v.y; return *this; }
@@ -60,6 +60,14 @@ template<typename T>
 inline T dot(const vector2_base<T> a, const vector2_base<T> &b)
 {
 	return a.x*b.x + a.y*b.y;
+}
+
+template<typename T>
+inline vector2_base<T> rotate(const vector2_base<T> &a, float angle)
+{
+	float s = sinf(angle);
+	float c = cosf(angle);
+	return vector2_base<T>((T)(c*a.x - s*a.y), (T)(s*a.x + c*a.y));
 }
 
 template<typename T>

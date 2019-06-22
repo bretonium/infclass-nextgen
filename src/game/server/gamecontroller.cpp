@@ -5,7 +5,6 @@
 
 #include <game/generated/protocol.h>
 
-#include "entities/pickup.h"
 #include "gamecontroller.h"
 #include "gamecontext.h"
 
@@ -32,143 +31,55 @@ IGameController::IGameController(class CGameContext *pGameServer)
 
 	m_aNumSpawnPoints[0] = 0;
 	m_aNumSpawnPoints[1] = 0;
-	m_aNumSpawnPoints[2] = 0;
+	
+	m_RoundId = -1;
 }
 
 IGameController::~IGameController()
 {
 }
 
-float IGameController::EvaluateSpawnPos(CSpawnEval *pEval, vec2 Pos)
+/* INFECTION MODIFICATION START ***************************************/
+bool IGameController::PreSpawn(CPlayer* pPlayer, vec2 *pOutPos)
 {
-	float Score = 0.0f;
-	CCharacter *pC = static_cast<CCharacter *>(GameServer()->m_World.FindFirst(CGameWorld::ENTTYPE_CHARACTER));
-	for(; pC; pC = (CCharacter *)pC->TypeNext())
-	{
-		// team mates are not as dangerous as enemies
-		float Scoremod = 1.0f;
-		if(pEval->m_FriendlyTeam != -1 && pC->GetPlayer()->GetTeam() == pEval->m_FriendlyTeam)
-			Scoremod = 0.5f;
-
-		float d = distance(Pos, pC->m_Pos);
-		Score += Scoremod * (d == 0 ? 1000000000.0f : 1.0f/d);
-	}
-
-	return Score;
-}
-
-void IGameController::EvaluateSpawnType(CSpawnEval *pEval, int Type)
-{
-	// get spawn point
-	for(int i = 0; i < m_aNumSpawnPoints[Type]; i++)
-	{
-		// check if the position is occupado
-		CCharacter *aEnts[MAX_CLIENTS];
-		int Num = GameServer()->m_World.FindEntities(m_aaSpawnPoints[Type][i], 64, (CEntity**)aEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
-		vec2 Positions[5] = { vec2(0.0f, 0.0f), vec2(-32.0f, 0.0f), vec2(0.0f, -32.0f), vec2(32.0f, 0.0f), vec2(0.0f, 32.0f) };	// start, left, up, right, down
-		int Result = -1;
-		for(int Index = 0; Index < 5 && Result == -1; ++Index)
-		{
-			Result = Index;
-			for(int c = 0; c < Num; ++c)
-				if(GameServer()->Collision()->CheckPoint(m_aaSpawnPoints[Type][i]+Positions[Index]) ||
-					distance(aEnts[c]->m_Pos, m_aaSpawnPoints[Type][i]+Positions[Index]) <= aEnts[c]->m_ProximityRadius)
-				{
-					Result = -1;
-					break;
-				}
-		}
-		if(Result == -1)
-			continue;	// try next spawn point
-
-		vec2 P = m_aaSpawnPoints[Type][i]+Positions[Result];
-		float S = EvaluateSpawnPos(pEval, P);
-		if(!pEval->m_Got || pEval->m_Score > S)
-		{
-			pEval->m_Got = true;
-			pEval->m_Score = S;
-			pEval->m_Pos = P;
-		}
-	}
-}
-
-bool IGameController::CanSpawn(int Team, vec2 *pOutPos)
-{
-	CSpawnEval Eval;
-
+	int Team = pPlayer->GetTeam();
+	
 	// spectators can't spawn
 	if(Team == TEAM_SPECTATORS)
 		return false;
 
-	if(IsTeamplay())
-	{
-		Eval.m_FriendlyTeam = Team;
+	int Type = (pPlayer->IsZombie() ? TEAM_RED : TEAM_BLUE);
 
-		// first try own team spawn, then normal spawn and then enemy
-		EvaluateSpawnType(&Eval, 1+(Team&1));
-		if(!Eval.m_Got)
+	// get spawn point
+	for(int i = 0; i < m_SpawnPoints[Type].size(); i++)
+	{
+		if(IsSpawnable(m_SpawnPoints[Type][i], 0))
 		{
-			EvaluateSpawnType(&Eval, 0);
-			if(!Eval.m_Got)
-				EvaluateSpawnType(&Eval, 1+((Team+1)&1));
+			*pOutPos = m_SpawnPoints[Type][i];
+			return true;
 		}
 	}
-	else
-	{
-		EvaluateSpawnType(&Eval, 0);
-		EvaluateSpawnType(&Eval, 1);
-		EvaluateSpawnType(&Eval, 2);
-	}
+	
+	return false;
+}
+/* INFECTION MODIFICATION END *****************************************/
 
-	*pOutPos = Eval.m_Pos;
-	return Eval.m_Got;
+
+bool IGameController::OnEntity(const char* pName, vec2 Pivot, vec2 P0, vec2 P1, vec2 P2, vec2 P3, int PosEnv)
+{
+	vec2 Pos = (P0 + P1 + P2 + P3)/4.0f;
+	
+	if(str_comp(pName, "icInfected") == 0)
+		m_SpawnPoints[0].add(Pos);
+	else if(str_comp(pName, "icHuman") == 0)
+		m_SpawnPoints[1].add(Pos);
+	
+	return false;
 }
 
-
-bool IGameController::OnEntity(int Index, vec2 Pos)
+double IGameController::GetTime()
 {
-	int Type = -1;
-	int SubType = 0;
-
-	if(Index == ENTITY_SPAWN)
-		m_aaSpawnPoints[0][m_aNumSpawnPoints[0]++] = Pos;
-	else if(Index == ENTITY_SPAWN_RED)
-		m_aaSpawnPoints[1][m_aNumSpawnPoints[1]++] = Pos;
-	else if(Index == ENTITY_SPAWN_BLUE)
-		m_aaSpawnPoints[2][m_aNumSpawnPoints[2]++] = Pos;
-	else if(Index == ENTITY_ARMOR_1)
-		Type = POWERUP_ARMOR;
-	else if(Index == ENTITY_HEALTH_1)
-		Type = POWERUP_HEALTH;
-	else if(Index == ENTITY_WEAPON_SHOTGUN)
-	{
-		Type = POWERUP_WEAPON;
-		SubType = WEAPON_SHOTGUN;
-	}
-	else if(Index == ENTITY_WEAPON_GRENADE)
-	{
-		Type = POWERUP_WEAPON;
-		SubType = WEAPON_GRENADE;
-	}
-	else if(Index == ENTITY_WEAPON_RIFLE)
-	{
-		Type = POWERUP_WEAPON;
-		SubType = WEAPON_RIFLE;
-	}
-	else if(Index == ENTITY_POWERUP_NINJA && g_Config.m_SvPowerups)
-	{
-		Type = POWERUP_NINJA;
-		SubType = WEAPON_NINJA;
-	}
-
-	if(Type != -1)
-	{
-		CPickup *pPickup = new CPickup(&GameServer()->m_World, Type, SubType);
-		pPickup->m_Pos = Pos;
-		return true;
-	}
-
-	return false;
+	return static_cast<double>(Server()->Tick() - m_RoundStartTick)/Server()->TickSpeed();
 }
 
 void IGameController::EndRound()
@@ -179,6 +90,12 @@ void IGameController::EndRound()
 	GameServer()->m_World.m_Paused = true;
 	m_GameOverTick = Server()->Tick();
 	m_SuddenDeath = 0;
+	
+	//Send score to the server
+	Server()->OnRoundEnd();
+
+	if (GameServer()->m_FunRound)
+		GameServer()->EndFunRound();
 }
 
 void IGameController::ResetGame()
@@ -206,10 +123,36 @@ const char *IGameController::GetTeamName(int Team)
 
 static bool IsSeparator(char c) { return c == ';' || c == ' ' || c == ',' || c == '\t'; }
 
+int IGameController::GetRoundCount() {
+	return m_RoundCount;
+}
+
+bool IGameController::IsRoundEndTime() 
+{
+	return m_GameOverTick > 0;
+}
+
 void IGameController::StartRound()
 {
 	ResetGame();
+	
+	Server()->OnRoundStart();
+	GameServer()->OnStartRound();
+	
+/* INFECTION MODIFICATION START ***************************************/
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(GameServer()->m_apPlayers[i])
+		{
+			Server()->SetClientMemory(i, CLIENTMEMORY_ROUNDSTART_OR_MAPCHANGE, true);
+			GameServer()->m_apPlayers[i]->SetClass(PLAYERCLASS_NONE);			
+			GameServer()->m_apPlayers[i]->m_ScoreRound = 0;
+			GameServer()->m_apPlayers[i]->m_HumanTime = 0;
+		}
+	}	
+/* INFECTION MODIFICATION END *****************************************/
 
+	m_RoundId = rand();
 	m_RoundStartTick = Server()->Tick();
 	m_SuddenDeath = 0;
 	m_GameOverTick = -1;
@@ -219,7 +162,7 @@ void IGameController::StartRound()
 	m_ForceBalanced = false;
 	Server()->DemoRecorder_HandleAutoStart();
 	char aBuf[256];
-	str_format(aBuf, sizeof(aBuf), "start round type='%s' teamplay='%d'", m_pGameType, m_GameFlags&GAMEFLAG_TEAMS);
+	str_format(aBuf, sizeof(aBuf), "start round type='%s' teamplay='%d' id='%d'", m_pGameType, m_GameFlags&GAMEFLAG_TEAMS, m_RoundId);
 	GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
 }
 
@@ -229,7 +172,57 @@ void IGameController::ChangeMap(const char *pToMap)
 	EndRound();
 }
 
-void IGameController::CycleMap()
+void IGameController::GetWordFromList(char *pNextWord, const char *pList, int ListIndex)
+{
+	pList += ListIndex;
+	int i = 0;
+	while(*pList)
+	{
+		if (IsSeparator(*pList)) break;
+		pNextWord[i] = *pList;
+		pList++;
+		i++;
+	}
+	pNextWord[i] = 0;
+}
+
+void IGameController::GetMapRotationInfo(CMapRotationInfo *pMapRotationInfo)
+{
+	pMapRotationInfo->m_MapCount = 0;
+
+	if(!str_length(g_Config.m_SvMaprotation))
+		return;
+
+	const char *pNextMap = g_Config.m_SvMaprotation;
+	const char *pCurrentMap = g_Config.m_SvMap;
+	bool insideWord = false;
+	char aBuf[128];
+	int i = 0;
+	while(*pNextMap)
+	{
+		if (IsSeparator(*pNextMap))
+		{
+			if (insideWord)
+				insideWord = false;
+		}
+		else // current char is not a seperator
+		{
+			if (!insideWord)
+			{
+				insideWord = true;
+				pMapRotationInfo->m_MapNameIndices[pMapRotationInfo->m_MapCount] = i;
+				GetWordFromList(aBuf, g_Config.m_SvMaprotation, i);
+				if (str_comp(aBuf, pCurrentMap) == 0)
+					pMapRotationInfo->m_CurrentMapNumber = pMapRotationInfo->m_MapCount;
+				pMapRotationInfo->m_MapCount++;
+			}
+		}
+		pNextMap++;
+		i++;
+	}
+}
+
+void IGameController::CycleMap(bool Forced)
 {
 	if(m_aMapWish[0] != 0)
 	{
@@ -244,65 +237,78 @@ void IGameController::CycleMap()
 	if(!str_length(g_Config.m_SvMaprotation))
 		return;
 
-	if(m_RoundCount < g_Config.m_SvRoundsPerMap-1)
-	{
-		if(g_Config.m_SvRoundSwap)
-			GameServer()->SwapTeams();
+	if(!Forced && m_RoundCount < g_Config.m_SvRoundsPerMap-1)
 		return;
-	}
 
-	// handle maprotation
-	const char *pMapRotation = g_Config.m_SvMaprotation;
-	const char *pCurrentMap = g_Config.m_SvMap;
+	int PlayerCount = Server()->GetActivePlayerCount();
 
-	int CurrentMapLen = str_length(pCurrentMap);
-	const char *pNextMap = pMapRotation;
-	while(*pNextMap)
+	CMapRotationInfo pMapRotationInfo;
+	GetMapRotationInfo(&pMapRotationInfo);
+	
+	if (pMapRotationInfo.m_MapCount <= 1)
+		return;
+
+	char aBuf[256] = {0};
+	int i=0;
+	if (g_Config.m_InfMaprotationRandom)
 	{
-		int WordLen = 0;
-		while(pNextMap[WordLen] && !IsSeparator(pNextMap[WordLen]))
-			WordLen++;
-
-		if(WordLen == CurrentMapLen && str_comp_num(pNextMap, pCurrentMap, CurrentMapLen) == 0)
+		// handle random maprotation
+		int RandInt;
+		for ( ; i<32; i++)
 		{
-			// map found
-			pNextMap += CurrentMapLen;
-			while(*pNextMap && IsSeparator(*pNextMap))
-				pNextMap++;
-
-			break;
+			RandInt = random_int(0, pMapRotationInfo.m_MapCount-1);
+			GetWordFromList(aBuf, g_Config.m_SvMaprotation, pMapRotationInfo.m_MapNameIndices[RandInt]);
+			int MinPlayers = Server()->GetMinPlayersForMap(aBuf);
+			if (RandInt != pMapRotationInfo.m_CurrentMapNumber && PlayerCount >= MinPlayers)
+				break;
 		}
-
-		pNextMap++;
+		i = RandInt;
 	}
-
-	// restart rotation
-	if(pNextMap[0] == 0)
-		pNextMap = pMapRotation;
-
-	// cut out the next map
-	char aBuf[512] = {0};
-	for(int i = 0; i < 511; i++)
+	else
 	{
-		aBuf[i] = pNextMap[i];
-		if(IsSeparator(pNextMap[i]) || pNextMap[i] == 0)
+		// handle normal maprotation
+		i = pMapRotationInfo.m_CurrentMapNumber+1;
+		for ( ; i != pMapRotationInfo.m_CurrentMapNumber; i++)
 		{
-			aBuf[i] = 0;
-			break;
+			if (i >= pMapRotationInfo.m_MapCount)
+			{
+				i = 0;
+				if (i == pMapRotationInfo.m_CurrentMapNumber)
+					break;
+			}
+			GetWordFromList(aBuf, g_Config.m_SvMaprotation, pMapRotationInfo.m_MapNameIndices[i]);
+			int MinPlayers = Server()->GetMinPlayersForMap(aBuf);
+			if (PlayerCount >= MinPlayers)
+				break;
 		}
 	}
 
-	// skip spaces
-	int i = 0;
-	while(IsSeparator(aBuf[i]))
+	if (i == pMapRotationInfo.m_CurrentMapNumber)
+	{
+		// couldnt find map with small enough minplayers number
 		i++;
+		if (i >= pMapRotationInfo.m_MapCount)
+			i = 0;
+		GetWordFromList(aBuf, g_Config.m_SvMaprotation, pMapRotationInfo.m_MapNameIndices[i]);
+	}
 
 	m_RoundCount = 0;
 
 	char aBufMsg[256];
-	str_format(aBufMsg, sizeof(aBufMsg), "rotating map to %s", &aBuf[i]);
+	str_format(aBufMsg, sizeof(aBufMsg), "rotating map to %s", aBuf);
 	GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
-	str_copy(g_Config.m_SvMap, &aBuf[i], sizeof(g_Config.m_SvMap));
+	str_copy(g_Config.m_SvMap, aBuf, sizeof(g_Config.m_SvMap));
+}
+
+void IGameController::SkipMap()
+{
+	CycleMap(true);
+	EndRound();
+}
+	
+bool IGameController::CanVote()
+{
+	return true;
 }
 
 void IGameController::PostReset()
@@ -312,8 +318,10 @@ void IGameController::PostReset()
 		if(GameServer()->m_apPlayers[i])
 		{
 			GameServer()->m_apPlayers[i]->Respawn();
-			GameServer()->m_apPlayers[i]->m_Score = 0;
-			GameServer()->m_apPlayers[i]->m_ScoreStartTick = Server()->Tick();
+/* INFECTION MODIFICATION START ***************************************/
+			//~ GameServer()->m_apPlayers[i]->m_Score = 0;
+			//~ GameServer()->m_apPlayers[i]->m_ScoreStartTick = Server()->Tick();
+/* INFECTION MODIFICATION END *****************************************/
 			GameServer()->m_apPlayers[i]->m_RespawnTick = Server()->Tick()+Server()->TickSpeed()/2;
 		}
 	}
@@ -344,15 +352,6 @@ int IGameController::OnCharacterDeath(class CCharacter *pVictim, class CPlayer *
 	// do scoreing
 	if(!pKiller || Weapon == WEAPON_GAME)
 		return 0;
-	if(pKiller == pVictim->GetPlayer())
-		pVictim->GetPlayer()->m_Score--; // suicide
-	else
-	{
-		if(IsTeamplay() && pVictim->GetPlayer()->GetTeam() == pKiller->GetTeam())
-			pKiller->m_Score--; // teamkill
-		else
-			pKiller->m_Score++; // normal kill
-	}
 	if(Weapon == WEAPON_SELF)
 		pVictim->GetPlayer()->m_RespawnTick = Server()->Tick()+Server()->TickSpeed()*3.0f;
 	return 0;
@@ -365,7 +364,7 @@ void IGameController::OnCharacterSpawn(class CCharacter *pChr)
 
 	// give default weapons
 	pChr->GiveWeapon(WEAPON_HAMMER, -1);
-	pChr->GiveWeapon(WEAPON_GUN, 10);
+	pChr->GiveWeapon(WEAPON_GUN, -1);
 }
 
 void IGameController::DoWarmup(int Seconds)
@@ -422,11 +421,35 @@ void IGameController::Tick()
 	if(m_GameOverTick != -1)
 	{
 		// game over.. wait for restart
-		if(Server()->Tick() > m_GameOverTick+Server()->TickSpeed()*10)
+		if(Server()->Tick() > m_GameOverTick+Server()->TickSpeed()*g_Config.m_InfShowScoreTime)
 		{
+			for(int i = 0; i < MAX_CLIENTS; i++)
+			{
+				if(GameServer()->m_apPlayers[i])
+				{
+					GameServer()->m_apPlayers[i]->SetScoreMode(Server()->GetClientDefaultScoreMode(i));
+				}
+			}
+			
 			CycleMap();
 			StartRound();
 			m_RoundCount++;
+		}
+		else
+		{
+			int ScoreMode = PLAYERSCOREMODE_SCORE;
+			if((Server()->Tick() - m_GameOverTick) > Server()->TickSpeed() * (g_Config.m_InfShowScoreTime/2.0f))
+			{
+				ScoreMode = PLAYERSCOREMODE_TIME;
+			}
+			
+			for(int i = 0; i < MAX_CLIENTS; i++)
+			{
+				if(GameServer()->m_apPlayers[i])
+				{
+					GameServer()->m_apPlayers[i]->SetScoreMode(ScoreMode);
+				}
+			}
 		}
 	}
 
@@ -447,8 +470,7 @@ void IGameController::Tick()
 			if(GameServer()->m_apPlayers[i] && GameServer()->m_apPlayers[i]->GetTeam() != TEAM_SPECTATORS)
 			{
 				aT[GameServer()->m_apPlayers[i]->GetTeam()]++;
-				aPScore[i] = GameServer()->m_apPlayers[i]->m_Score*Server()->TickSpeed()*60.0f/
-					(Server()->Tick()-GameServer()->m_apPlayers[i]->m_ScoreStartTick);
+				aPScore[i] = 0.0;
 				aTScore[GameServer()->m_apPlayers[i]->GetTeam()] += aPScore[i];
 			}
 		}
@@ -489,8 +511,15 @@ void IGameController::Tick()
 		m_UnbalancedTick = -1;
 	}
 
+	unsigned int nbPlayers=0;
+	CPlayerIterator<PLAYERITER_INGAME> Iter(GameServer()->m_apPlayers);
+	while(Iter.Next())
+	{
+		nbPlayers++;
+	}
+
 	// check for inactive players
-	if(g_Config.m_SvInactiveKickTime > 0)
+	if(g_Config.m_SvInactiveKickTime > 0 && nbPlayers > 1)
 	{
 		for(int i = 0; i < MAX_CLIENTS; ++i)
 		{
@@ -697,19 +726,6 @@ void IGameController::DoWincheck()
 			// gather some stats
 			int Topscore = 0;
 			int TopscoreCount = 0;
-			for(int i = 0; i < MAX_CLIENTS; i++)
-			{
-				if(GameServer()->m_apPlayers[i])
-				{
-					if(GameServer()->m_apPlayers[i]->m_Score > Topscore)
-					{
-						Topscore = GameServer()->m_apPlayers[i]->m_Score;
-						TopscoreCount = 1;
-					}
-					else if(GameServer()->m_apPlayers[i]->m_Score == Topscore)
-						TopscoreCount++;
-				}
-			}
 
 			// check score win condition
 			if((g_Config.m_SvScorelimit > 0 && Topscore >= g_Config.m_SvScorelimit) ||
@@ -732,3 +748,25 @@ int IGameController::ClampTeam(int Team)
 		return Team&1;
 	return 0;
 }
+
+/* INFECTION MODIFICATION START ***************************************/
+int IGameController::ChooseHumanClass(CPlayer* pPlayer)
+{
+	return PLAYERCLASS_ENGINEER;
+}
+
+int IGameController::ChooseInfectedClass(CPlayer* pPlayer)
+{
+	return PLAYERCLASS_SMOKER;
+}
+
+bool IGameController::IsChoosableClass(int PlayerClass)
+{
+	return false;
+}
+
+bool IGameController::IsSpawnable(vec2 Position, int TeleZoneType)
+{
+	return true;
+}
+/* INFECTION MODIFICATION END *****************************************/

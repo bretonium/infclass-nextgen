@@ -4,13 +4,21 @@
 #define ENGINE_SERVER_SERVER_H
 
 #include <engine/server.h>
+#include <engine/server/netsession.h>
+#include <engine/server/roundstatistics.h>
+#include <game/server/classes.h>
+#include <game/voting.h>
 
+/* DDNET MODIFICATION START *******************************************/
+#include "sql_connector.h"
+#include "sql_server.h"
+/* DDNET MODIFICATION END *********************************************/
 
 class CSnapIDPool
 {
 	enum
 	{
-		MAX_IDS = 16*1024,
+		MAX_IDS = 16*2048,
 	};
 
 	class CID
@@ -55,7 +63,9 @@ public:
 	virtual int BanAddr(const NETADDR *pAddr, int Seconds, const char *pReason);
 	virtual int BanRange(const CNetRange *pRange, int Seconds, const char *pReason);
 
-	static void ConBanExt(class IConsole::IResult *pResult, void *pUser);
+	static bool ConBanExt(class IConsole::IResult *pResult, void *pUser);
+
+	int m_BanID;
 };
 
 
@@ -64,6 +74,13 @@ class CServer : public IServer
 	class IGameServer *m_pGameServer;
 	class IConsole *m_pConsole;
 	class IStorage *m_pStorage;
+
+/* DDNET MODIFICATION START *******************************************/
+#ifdef CONF_SQL
+	CSqlServer* m_apSqlReadServers[MAX_SQLSERVERS];
+	CSqlServer* m_apSqlWriteServers[MAX_SQLSERVERS];
+#endif
+/* DDNET MODIFICATION END *********************************************/
 public:
 	class IGameServer *GameServer() { return m_pGameServer; }
 	class IConsole *Console() { return m_pConsole; }
@@ -71,10 +88,6 @@ public:
 
 	enum
 	{
-		AUTHED_NO=0,
-		AUTHED_MOD,
-		AUTHED_ADMIN,
-
 		MAX_RCONCMD_SEND=16,
 	};
 
@@ -106,6 +119,7 @@ public:
 		int m_State;
 		int m_Latency;
 		int m_SnapRate;
+		bool m_Quitting;
 
 		int m_LastAckedSnapshot;
 		int m_LastInputTick;
@@ -118,13 +132,34 @@ public:
 		char m_aName[MAX_NAME_LENGTH];
 		char m_aClan[MAX_CLAN_LENGTH];
 		int m_Country;
-		int m_Score;
 		int m_Authed;
 		int m_AuthTries;
 
 		const IConsole::CCommandInfo *m_pRconCmdToSend;
-
-		void Reset();
+		
+		void Reset(bool ResetScore=true);
+		
+		int m_NbRound;
+		
+		int m_AntiPing;
+		int m_CustomSkin;
+		int m_AlwaysRandom;
+		int m_DefaultScoreMode;
+		char m_aLanguage[16];
+		int m_WaitingTime;
+		int m_WasInfected;
+		
+		bool m_Memory[NUM_CLIENTMEMORIES];
+		IServer::CClientSession m_Session;
+		IServer::CClientAccusation m_Accusation;
+		
+		//Login
+		int m_LogInstance;
+		int m_UserID;
+#ifdef CONF_SQL
+		int m_UserLevel;
+#endif
+		char m_aUsername[MAX_NAME_LENGTH];
 	};
 
 	CClient m_aClients[MAX_CLIENTS];
@@ -150,22 +185,23 @@ public:
 	//static NETADDR4 master_server;
 
 	char m_aCurrentMap[64];
+	
 	unsigned m_CurrentMapCrc;
 	unsigned char *m_pCurrentMapData;
-	int m_CurrentMapSize;
+	unsigned int m_CurrentMapSize;
 
 	CDemoRecorder m_DemoRecorder;
 	CRegister m_Register;
 	CMapChecker m_MapChecker;
 
 	CServer();
+	virtual ~CServer();
 
 	int TrySetClientName(int ClientID, const char *pName);
 
 	virtual void SetClientName(int ClientID, const char *pName);
 	virtual void SetClientClan(int ClientID, char const *pClan);
 	virtual void SetClientCountry(int ClientID, int Country);
-	virtual void SetClientScore(int ClientID, int Score);
 
 	void Kick(int ClientID, const char *pReason);
 
@@ -182,6 +218,7 @@ public:
 	bool IsAuthed(int ClientID);
 	int GetClientInfo(int ClientID, CClientInfo *pInfo);
 	void GetClientAddr(int ClientID, char *pAddrStr, int Size);
+	std::string GetClientIP(int ClientID);
 	const char *ClientName(int ClientID);
 	const char *ClientClan(int ClientID);
 	int ClientCountry(int ClientID);
@@ -194,9 +231,10 @@ public:
 	void DoSnapshot();
 
 	static int NewClientCallback(int ClientID, void *pUser);
-	static int DelClientCallback(int ClientID, const char *pReason, void *pUser);
+	static int DelClientCallback(int ClientID, int Type, const char *pReason, void *pUser);
 
 	void SendMap(int ClientID);
+	
 	void SendConnectionReady(int ClientID);
 	void SendRconLine(int ClientID, const char *pLine);
 	static void SendRconLineAuthed(const char *pLine, void *pUser);
@@ -218,18 +256,30 @@ public:
 	void InitRegister(CNetServer *pNetServer, IEngineMasterServer *pMasterServer, IConsole *pConsole);
 	int Run();
 
-	static void ConKick(IConsole::IResult *pResult, void *pUser);
-	static void ConStatus(IConsole::IResult *pResult, void *pUser);
-	static void ConShutdown(IConsole::IResult *pResult, void *pUser);
-	static void ConRecord(IConsole::IResult *pResult, void *pUser);
-	static void ConStopRecord(IConsole::IResult *pResult, void *pUser);
-	static void ConMapReload(IConsole::IResult *pResult, void *pUser);
-	static void ConLogout(IConsole::IResult *pResult, void *pUser);
-	static void ConchainSpecialInfoupdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
-	static void ConchainMaxclientsperipUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
-	static void ConchainModCommandUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
-	static void ConchainConsoleOutputLevelUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+	static bool ConKick(IConsole::IResult *pResult, void *pUser);
+	static bool ConStatus(IConsole::IResult *pResult, void *pUser);
+	static bool ConOptionStatus(IConsole::IResult *pResult, void *pUser);
+	static bool ConShutdown(IConsole::IResult *pResult, void *pUser);
+	static bool ConRecord(IConsole::IResult *pResult, void *pUser);
+	static bool ConStopRecord(IConsole::IResult *pResult, void *pUser);
+	static bool ConMapReload(IConsole::IResult *pResult, void *pUser);
+	static bool ConLogout(IConsole::IResult *pResult, void *pUser);
+	static bool ConchainSpecialInfoupdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+	static bool ConchainMaxclientsperipUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+	static bool ConchainModCommandUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+	static bool ConchainConsoleOutputLevelUpdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 
+	static bool ConMute(class IConsole::IResult *pResult, void *pUser);
+	static bool ConUnmute(class IConsole::IResult *pResult, void *pUser);
+	static bool ConWhisper(class IConsole::IResult *pResult, void *pUser);
+	
+/* DDNET MODIFICATION START *******************************************/
+	static bool ConAddSqlServer(IConsole::IResult *pResult, void *pUserData);
+	static bool ConDumpSqlServers(IConsole::IResult *pResult, void *pUserData);
+
+	static void CreateTablesThread(void *pData);
+/* DDNET MODIFICATION END *********************************************/
+	
 	void RegisterCommands();
 
 
@@ -237,6 +287,127 @@ public:
 	virtual void SnapFreeID(int ID);
 	virtual void *SnapNewItem(int Type, int ID, int Size);
 	void SnapSetStaticsize(int ItemType, int Size);
+	
+/* INFECTION MODIFICATION START ***************************************/
+protected:
+	int m_FastDownloadLastSent[MAX_CLIENTS];
+	int m_FastDownloadLastAsk[MAX_CLIENTS];
+	int m_FastDownloadLastAskTick[MAX_CLIENTS];
+
+public:
+	int m_InfClassChooser;
+	int m_InfAmmoRegenTime[NB_INFWEAPON];
+	int m_InfFireDelay[NB_INFWEAPON];
+	int m_InfMaxAmmo[NB_INFWEAPON];
+	int m_InfClassAvailability[NB_PLAYERCLASS];
+
+public:
+	virtual int IsClientInfectedBefore(int ClientID);
+	virtual void InfecteClient(int ClientID);
+	
+	virtual int GetClientAntiPing(int ClientID);
+	virtual void SetClientAntiPing(int ClientID, int Value);
+	
+	virtual int GetClientCustomSkin(int ClientID);
+	virtual void SetClientCustomSkin(int ClientID, int Value);
+	
+	virtual int GetClientAlwaysRandom(int ClientID);
+	virtual void SetClientAlwaysRandom(int ClientID, int Value);
+	
+	virtual int GetClientDefaultScoreMode(int ClientID);
+	virtual void SetClientDefaultScoreMode(int ClientID, int Value);
+	
+	virtual const char* GetClientLanguage(int ClientID);
+	virtual void SetClientLanguage(int ClientID, const char* pLanguage);
+	
+	virtual int GetFireDelay(int WID);
+	virtual void SetFireDelay(int WID, int Time);
+	
+	virtual int GetAmmoRegenTime(int WID);
+	virtual void SetAmmoRegenTime(int WID, int Time);
+	
+	virtual int GetMaxAmmo(int WID);
+	virtual void SetMaxAmmo(int WID, int n);
+	
+	virtual int GetClassAvailability(int CID);
+	virtual void SetClassAvailability(int CID, int n);
+	
+	virtual int GetClientNbRound(int ClientID);
+	
+	virtual int IsClassChooserEnabled();
+	virtual bool IsClientLogged(int ClientID);
+#ifdef CONF_SQL
+	virtual void Login(int ClientID, const char* pUsername, const char* pPassword);
+	virtual void Logout(int ClientID);
+	virtual void SetEmail(int ClientID, const char* pEmail);
+	virtual void Register(int ClientID, const char* pUsername, const char* pPassword, const char* pEmail);
+	virtual void ShowChallenge(int ClientID);
+	virtual void ShowTop10(int ClientID, int ScoreType);
+	virtual void ShowRank(int ClientID, int ScoreType);
+	virtual void ShowGoal(int ClientID, int ScoreType);
+	virtual void ShowStats(int ClientID, int UserId);
+	virtual void RefreshChallenge();
+	virtual int GetUserLevel(int ClientID);
+#endif
+	virtual void Ban(int ClientID, int Seconds, const char* pReason);
+private:
+	bool InitCaptcha();
+	
+public:
+	class CGameServerCmd
+	{
+	public:
+		virtual ~CGameServerCmd() {};
+		virtual void Execute(IGameServer* pGameServer) = 0;
+	};
+
+private:
+	CRoundStatistics m_RoundStatistics;
+	CNetSession<IServer::CClientSession> m_NetSession;
+	CNetSession<IServer::CClientAccusation> m_NetAccusation;
+
+	IServer::CMapVote m_MapVotes[MAX_VOTE_OPTIONS];
+	int m_MapVotesCounter;
+	
+#ifdef CONF_SQL
+public:
+	array<CGameServerCmd*> m_lGameServerCmds;
+	LOCK m_GameServerCmdLock;
+	LOCK m_ChallengeLock;
+	char m_aChallengeWinner[16];
+	int64 m_ChallengeRefreshTick;
+	int m_ChallengeType;
+#endif
+
+	int m_TimeShiftUnit;
+
+public:
+	void AddGameServerCmd(CGameServerCmd* pCmd);
+	
+	virtual CRoundStatistics* RoundStatistics() { return &m_RoundStatistics; }
+	virtual void OnRoundStart();
+	virtual void OnRoundEnd();
+	
+	virtual void SetClientMemory(int ClientID, int Memory, bool Value = true);
+	virtual void ResetClientMemoryAboutGame(int ClientID);
+	virtual bool GetClientMemory(int ClientID, int Memory);
+	
+	virtual IServer::CClientSession* GetClientSession(int ClientID);
+	
+	virtual void AddAccusation(int From, int To, const char* pReason);
+	virtual bool ClientShouldBeBanned(int ClientID);
+	virtual void RemoveAccusations(int ClientID);
+
+	virtual void AddMapVote(int From, const char* pCommand, const char* pReason, const char* pDesc);
+	virtual void RemoveMapVotesForID(int ClientID);
+	virtual void ResetMapVotes();
+	virtual IServer::CMapVote* GetMapVote();
+	virtual int GetMinPlayersForMap(const char* pMapName);
+
+	virtual int GetActivePlayerCount();
+	
+	virtual int GetTimeShiftUnit() const { return m_TimeShiftUnit; } //In ms
+/* INFECTION MODIFICATION END *****************************************/
 };
 
 #endif

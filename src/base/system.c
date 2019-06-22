@@ -1,5 +1,6 @@
 /* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
+/* (c) Boris Bobrov, 2019 */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -40,6 +41,9 @@
 	#include <fcntl.h>
 	#include <direct.h>
 	#include <errno.h>
+
+	//for crypto stuff:
+	#include <wincrypt.h>
 #else
 	#error NOT IMPLEMENTED
 #endif
@@ -383,6 +387,21 @@ void *thread_create(void (*threadfunc)(void *), void *u)
 #endif
 }
 
+/* DDNET MODIFICATION START *******************************************/
+void *thread_init(void (*threadfunc)(void *), void *u)
+{
+#if defined(CONF_FAMILY_UNIX)
+	pthread_t id;
+	pthread_create(&id, NULL, (void *(*)(void*))threadfunc, u);
+	return (void*)id;
+#elif defined(CONF_FAMILY_WINDOWS)
+	return CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)threadfunc, u, 0, NULL);
+#else
+	#error not implemented
+#endif
+}
+/* DDNET MODIFICATION END *********************************************/
+
 void thread_wait(void *thread)
 {
 #if defined(CONF_FAMILY_UNIX)
@@ -506,6 +525,19 @@ void lock_release(LOCK lock)
 	#error not implemented on this platform
 #endif
 }
+
+/* DDNET MODIFICATION START *******************************************/
+void lock_unlock(LOCK lock)
+{
+#if defined(CONF_FAMILY_UNIX)
+	pthread_mutex_unlock((LOCKINTERNAL *)lock);
+#elif defined(CONF_FAMILY_WINDOWS)
+	LeaveCriticalSection((LPCRITICAL_SECTION)lock);
+#else
+	#error not implemented on this platform
+#endif
+}
+/* DDNET MODIFICATION END *********************************************/
 
 #if !defined(CONF_PLATFORM_MACOSX)
 	#if defined(CONF_FAMILY_UNIX)
@@ -880,7 +912,9 @@ static int priv_net_create_socket(int domain, int type, struct sockaddr *addr, i
 		setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&ipv6only, sizeof(ipv6only));
 	}
 #endif
-
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &(int){ 1 }, sizeof(int)) < 0) {
+		dbg_msg("net", "failed to setsockopt SO_REUSEPORT");
+	}
 	/* bind the socket */
 	e = bind(sock, addr, sockaddrlen);
 	if(e != 0)
@@ -1554,6 +1588,29 @@ void str_append(char *dst, const char *src, int dst_size)
 	dst[dst_size-1] = 0; /* assure null termination */
 }
 
+//TeeUniverses
+void str_append_num(char *dst, const char *src, int dst_size, int num)
+{
+	int s = strlen(dst);
+	int i = 0;
+	while(s < dst_size)
+	{
+		if(i>=num)
+		{
+			dst[s] = 0;
+			return;
+		}
+		
+		dst[s] = src[i];
+		if(!src[i]) /* check for null termination */
+			return;
+		s++;
+		i++;
+	}
+
+	dst[dst_size-1] = 0; /* assure null termination */
+}
+
 void str_copy(char *dst, const char *src, int dst_size)
 {
 	strncpy(dst, src, dst_size);
@@ -1748,16 +1805,23 @@ void str_hex(char *dst, int dst_size, const void *data, int data_size)
 	}
 }
 
+/* DDNET MODIFICATION START *******************************************/
+void str_timestamp_ex(time_t time_data, char *buffer, int buffer_size, const char *format)
+{
+	struct tm *time_info;
+
+	time_info = localtime(&time_data);
+	strftime(buffer, buffer_size, format, time_info);
+	buffer[buffer_size-1] = 0;	/* assure null termination */
+}
+
 void str_timestamp(char *buffer, int buffer_size)
 {
 	time_t time_data;
-	struct tm *time_info;
-
 	time(&time_data);
-	time_info = localtime(&time_data);
-	strftime(buffer, buffer_size, "%Y-%m-%d_%H-%M-%S", time_info);
-	buffer[buffer_size-1] = 0;	/* assure null termination */
+	str_timestamp_ex(time_data, buffer, buffer_size, "%Y-%m-%d_%H-%M-%S");
 }
+/* DDNET MODIFICATION END *********************************************/
 
 int mem_comp(const void *a, const void *b, int size)
 {
@@ -1828,7 +1892,6 @@ char str_uppercase(char c)
 int str_toint(const char *str) { return atoi(str); }
 float str_tofloat(const char *str) { return atof(str); }
 
-
 const char *str_utf8_skip_whitespaces(const char *str)
 {
 	const char *str_old;
@@ -1851,7 +1914,7 @@ const char *str_utf8_skip_whitespaces(const char *str)
 	return str;
 }
 
-static int str_utf8_isstart(char c)
+int str_utf8_isstart(char c)
 {
 	if((c&0xC0) == 0x80) /* 10xxxxxx */
 		return 0;

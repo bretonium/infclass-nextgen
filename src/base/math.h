@@ -4,6 +4,7 @@
 #define BASE_MATH_H
 
 #include <stdlib.h>
+#include <random>
 
 template <typename T>
 inline T clamp(T val, T min, T max)
@@ -20,7 +21,7 @@ inline float sign(float f)
 	return f<0.0f?-1.0f:1.0f;
 }
 
-inline int round(float f)
+inline int round_to_int(float f)
 {
 	if(f > 0)
 		return (int)(f+0.5f);
@@ -33,7 +34,10 @@ inline T mix(const T a, const T b, TB amount)
 	return a + (b-a)*amount;
 }
 
-inline float frandom() { return rand()/(float)(RAND_MAX); }
+float random_float();
+bool random_prob(float f);
+int random_int(int Min, int Max);
+int random_distribution(double* pProb, double* pProb2);
 
 // float to fixed
 inline int f2fx(float v) { return (int)(v*(float)(1<<10)); }
