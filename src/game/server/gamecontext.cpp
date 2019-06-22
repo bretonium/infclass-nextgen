@@ -1410,12 +1410,12 @@ void CGameContext::OnClientConnected(int ClientID)
 	m_BroadcastStates[ClientID].m_NextMessage[0] = 0;
 }
 
-void CGameContext::OnClientDrop(int ClientID, int Type, const char *pReason)
+void CGameContext::OnClientDrop(int ClientID, const char *pReason)
 {
-	m_pController->OnClientDrop(ClientID, Type);
+	m_pController->OnClientDrop(ClientID);
 	
 	AbortVoteKickOnDisconnect(ClientID);
-	m_apPlayers[ClientID]->OnDisconnect(Type, pReason);
+	m_apPlayers[ClientID]->OnDisconnect(pReason);
 	delete m_apPlayers[ClientID];
 	m_apPlayers[ClientID] = 0;
 

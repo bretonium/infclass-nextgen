@@ -260,7 +260,7 @@ int CServerBan::BanExt(T *pBanPool, const typename T::CDataType *pData, int Seco
 			CNetHash NetHash(&Data);
 			char aBuf[256];
 			MakeBanInfo(pBanPool->Find(&Data, &NetHash), aBuf, sizeof(aBuf), MSGTYPE_PLAYER);
-			Server()->m_NetServer.Drop(i, CLIENTDROPTYPE_BAN, aBuf);
+			Server()->m_NetServer.Drop(i, aBuf);
 		}
 	}
 
@@ -506,7 +506,7 @@ void CServer::Kick(int ClientID, const char *pReason)
  		return;
 	}
 
-	m_NetServer.Drop(ClientID, CLIENTDROPTYPE_KICK, pReason);
+	m_NetServer.Drop(ClientID, pReason);
 }
 
 /*int CServer::Tick()
@@ -964,7 +964,7 @@ int CServer::NewClientCallback(int ClientID, void *pUser)
 	return 0;
 }
 
-int CServer::DelClientCallback(int ClientID, int Type, const char *pReason, void *pUser)
+int CServer::DelClientCallback(int ClientID, const char *pReason, void *pUser)
 {
 	CServer *pThis = (CServer *)pUser;
 	
@@ -986,7 +986,7 @@ int CServer::DelClientCallback(int ClientID, int Type, const char *pReason, void
 
 	// notify the mod about the drop
 	if(pThis->m_aClients[ClientID].m_State >= CClient::STATE_READY && pThis->m_aClients[ClientID].m_WaitingTime <= 0)
-		pThis->GameServer()->OnClientDrop(ClientID, Type, pReason);
+		pThis->GameServer()->OnClientDrop(ClientID, pReason);
 
 	pThis->m_aClients[ClientID].m_State = CClient::STATE_EMPTY;
 	pThis->m_aClients[ClientID].m_aName[0] = 0;
@@ -1157,7 +1157,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 					// wrong version
 					char aReason[256];
 					str_format(aReason, sizeof(aReason), "Wrong version. Server is running '%s' and client '%s'", GameServer()->NetVersion(), pVersion);
-					m_NetServer.Drop(ClientID, CLIENTDROPTYPE_WRONG_VERSION, aReason);
+					m_NetServer.Drop(ClientID, aReason);
 					return;
 				}
 
@@ -1165,7 +1165,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 				if(!g_Config.m_InfCaptcha && g_Config.m_Password[0] != 0 && str_comp(g_Config.m_Password, pPassword) != 0)
 				{
 					// wrong password
-					m_NetServer.Drop(ClientID, CLIENTDROPTYPE_WRONG_PASSWORD, "Wrong password");
+					m_NetServer.Drop(ClientID, "Wrong password");
 					return;
 				}
 
@@ -1414,7 +1414,7 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 					if(m_aClients[ClientID].m_AuthTries >= g_Config.m_SvRconMaxTries)
 					{
 						if(!g_Config.m_SvRconBantime)
-							m_NetServer.Drop(ClientID, CLIENTDROPTYPE_KICK, "Too many remote console authentication tries");
+							m_NetServer.Drop(ClientID, "Too many remote console authentication tries");
 						else
 							m_ServerBan.BanAddr(m_NetServer.ClientAddr(ClientID), g_Config.m_SvRconBantime*60, "Too many remote console authentication tries");
 					}
@@ -2183,7 +2183,7 @@ int CServer::Run()
 	for(int i = 0; i < MAX_CLIENTS; ++i)
 	{
 		if(m_aClients[i].m_State != CClient::STATE_EMPTY)
-			m_NetServer.Drop(i, CLIENTDROPTYPE_SHUTDOWN, "Server shutdown");
+			m_NetServer.Drop(i, "Server shutdown");
 
 		m_Econ.Shutdown();
 	}

@@ -47,11 +47,14 @@ CGameControllerMOD::~CGameControllerMOD()
 	if(m_GrowingMap) delete[] m_GrowingMap;
 }
 
-void CGameControllerMOD::OnClientDrop(int ClientID, int Type)
+void CGameControllerMOD::OnClientDrop(int ClientID)
 {
-	if(Type == CLIENTDROPTYPE_BAN) return;
-	if(Type == CLIENTDROPTYPE_KICK) return;
-	if(Type == CLIENTDROPTYPE_SHUTDOWN) return;	
+	/** TODO: handle kick and ban so that the player doesn't
+	 * get re-banned with less time
+	 */
+	//if(Type == CLIENTDROPTYPE_BAN) return;
+	//if(Type == CLIENTDROPTYPE_KICK) return;
+	//if(Type == CLIENTDROPTYPE_SHUTDOWN) return;	
 	
 	CPlayer* pPlayer = GameServer()->m_apPlayers[ClientID];
 	if(pPlayer && pPlayer->IsZombie() && m_InfectedStarted)

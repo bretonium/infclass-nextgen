@@ -382,27 +382,13 @@ void CPlayer::Snap(int SnappingClient)
 	}
 }
 
-void CPlayer::OnDisconnect(int Type, const char *pReason)
+void CPlayer::OnDisconnect(const char *pReason)
 {
 	KillCharacter();
 
 	if(Server()->ClientIngame(m_ClientID))
 	{
-		if(Type == CLIENTDROPTYPE_BAN)
-		{
-			GameServer()->SendChatTarget_Localization(-1, CHATCATEGORY_PLAYER, _("{str:PlayerName} has been banned ({str:Reason})"),
-				"PlayerName", Server()->ClientName(m_ClientID),
-				"Reason", pReason,
-				NULL);
-		}
-		else if(Type == CLIENTDROPTYPE_KICK)
-		{
-			GameServer()->SendChatTarget_Localization(-1, CHATCATEGORY_PLAYER, _("{str:PlayerName} has been kicked ({str:Reason})"),
-				"PlayerName", Server()->ClientName(m_ClientID),
-				"Reason", pReason,
-				NULL);
-		}
-		else if(pReason && *pReason)
+		if(pReason && *pReason)
 		{
 			GameServer()->SendChatTarget_Localization(-1, CHATCATEGORY_PLAYER, _("{str:PlayerName} has left the game ({str:Reason})"),
 				"PlayerName", Server()->ClientName(m_ClientID),

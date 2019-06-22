@@ -141,7 +141,7 @@ public:
 	virtual int ChooseInfectedClass(CPlayer* pPlayer);
 	virtual bool IsChoosableClass(int PlayerClass);
 	virtual bool IsSpawnable(vec2 Position, int TeleZoneIndex);
-	virtual void OnClientDrop(int ClientID, int Type) {};
+	virtual void OnClientDrop(int ClientID) {};
 	virtual bool IsInfectionStarted() = 0;
 	
 	int GetRoundId() { return m_RoundId; }
