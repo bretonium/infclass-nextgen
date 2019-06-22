@@ -236,7 +236,6 @@ function build(settings)
 	-- build the small libraries
 	wavpack = Compile(settings, Collect("src/engine/external/wavpack/*.c"))
 	pnglite = Compile(settings, Collect("src/engine/external/pnglite/*.c"))
-	md5 = Compile(settings, "src/engine/external/md5/md5.c")
 	json = Compile(settings, "src/engine/external/json-parser/json.c")
 
 	-- build game components
@@ -306,12 +305,12 @@ function build(settings)
 	tools = {}
 	for i,v in ipairs(tools_src) do
 		toolname = PathFilename(PathBase(v))
-		tools[i] = Link(settings, toolname, Compile(settings, v), engine, zlib, pnglite, md5)
+		tools[i] = Link(settings, toolname, Compile(settings, v), engine, zlib, pnglite)
 	end
 
 	-- build server, version server and master server
 	server_exe = Link(server_settings, "bin/server", engine, server,
-		game_shared, game_server, infclassr, teeuniverses, zlib, server_link_other, md5, json)
+		game_shared, game_server, infclassr, teeuniverses, zlib, server_link_other, json)
 
 	serverlaunch = {}
 	if platform == "macosx" then
@@ -319,10 +318,10 @@ function build(settings)
 	end
 
 	versionserver_exe = Link(server_settings, "versionsrv", versionserver,
-		engine, zlib, md5)
+		engine, zlib)
 
 	masterserver_exe = Link(server_settings, "mastersrv", masterserver,
-		engine, zlib, md5)
+		engine, zlib)
 
 	-- make targets
 	if string.find(settings.config_name, "sql") then
